@@ -215,13 +215,15 @@
     }
     .directory-panel {
       display: none; background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; margin-bottom: 12px; overflow: hidden;
+      border-radius: 12px; margin-bottom: 12px;
       animation: slideUp 0.2s ease;
+      max-height: 60vh; flex-direction: column;
     }
-    .directory-panel.active { display: block; }
+    .directory-panel.active { display: flex; }
     .directory-header {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 12px; border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
     .directory-search {
       flex: 1; background: var(--bg); border: 1px solid var(--border);
@@ -235,7 +237,8 @@
     }
     .directory-close:hover { color: var(--text); }
     .directory-list {
-      max-height: 50vh; overflow-y: auto; padding: 6px;
+      flex: 1; overflow-y: auto; padding: 6px;
+      -webkit-overflow-scrolling: touch;
     }
     .directory-item {
       display: flex; align-items: center; gap: 8px;
@@ -2665,14 +2668,17 @@ function createStreamPCForViewer(viewerId) {
 }
 
 async function sendStreamOffer(viewerId) {
-  const pc = createStreamPCForViewer(viewerId);
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  socket.emit("stream-offer", { streamId: currentStreamId, viewerId, sdp: offer });
+  try {
+    const pc = createStreamPCForViewer(viewerId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit("stream-offer", { streamId: currentStreamId, viewerId, sdp: offer });
+  } catch (e) { console.error("Stream offer failed:", e); }
 }
 
 // Viewer: handle incoming offer from streamer
 async function handleStreamOffer(sdp) {
+  try {
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
   pc.ontrack = (event) => {
     const rv = $("#stream-remote-video");
@@ -2693,6 +2699,10 @@ async function handleStreamOffer(sdp) {
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   socket.emit("stream-answer", { streamId: currentStreamId, sdp: answer });
+  } catch (e) {
+    console.error("Stream offer handling failed:", e);
+    showToast("Stream connection failed", "error");
+  }
 }
 
 // ── Chat ─────────────────────────────────────────────────────────────────
@@ -2732,11 +2742,12 @@ function renderReactions(msgId, reactions) {
   }).join("") + '</div>';
 }
 
-function renderChatMsg(msg, container) {
+function renderChatMsg(msg, container, opts = {}) {
   const color = getColor(msg.name);
   const initials = getInitials(msg.name);
   const bg = msg.avatar ? `background-image:url(${msg.avatar})` : `background:${color}`;
   const inner = msg.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#fff">${initials}</span>`;
+  const showReactions = !opts.noReactions;
 
   const el = document.createElement("div");
   el.className = "chat-msg";
@@ -2748,10 +2759,10 @@ function renderChatMsg(msg, container) {
       <span class="chat-msg-name" style="color:${color}">${chatDisplayName(msg)}</span>
       <span class="chat-msg-time">${formatChatTime(msg.ts)}</span>
       <div class="chat-msg-text">${escapeHtml(msg.text)}</div>
-      ${renderReactions(msg.id, msg.reactions)}
+      ${showReactions ? renderReactions(msg.id, msg.reactions) : ""}
     </div>
-    <button class="chat-react-btn" onclick="showReactPicker(event,'${msg.id}')">+</button>
-    <div class="chat-react-picker" id="react-picker-${msg.id}">
+    ${showReactions ? `<button class="chat-react-btn" onclick="showReactPicker(event,'${msg.id}')">+</button>` : ""}
+    ${showReactions ? `<div class="chat-react-picker" id="react-picker-${msg.id}">` : "<div style='display:none'>"}
       ${REACT_EMOJIS.map(e => `<button onclick="toggleReaction('${msg.id}','${e}');event.stopPropagation();">${e}</button>`).join("")}<button class="picker-close" onclick="event.stopPropagation();this.parentElement.classList.remove('active');">&times;</button>
     </div>`;
   container.appendChild(el);
@@ -2875,13 +2886,21 @@ async function sendDM() {
   let finalText = payload;
   let encrypted = false;
   try {
-    const peerPubKey = await getPeerPublicKey(dmTargetName);
-    if (peerPubKey) {
+    let peerPubKey = await getPeerPublicKey(dmTargetName);
+    // If peer is a wallet address, also try looking up by the registered user name
+    if (!peerPubKey && /^0x[0-9a-f]{40}$/i.test(dmTargetName)) {
+      // Wallet address — no key expected, skip warning
+    } else if (peerPubKey) {
       const sharedKey = await deriveSharedSecret(peerPubKey);
       finalText = await encryptDM(payload, sharedKey);
       encrypted = true;
     } else {
-      showToast("No encryption key — sending unencrypted", "error", 3000);
+      // Only warn once per conversation, not every message
+      if (!window._e2eWarned) { window._e2eWarned = new Set(); }
+      if (!window._e2eWarned.has(dmTargetName)) {
+        showToast("Peer has no encryption key — sending unencrypted", "info", 2000);
+        window._e2eWarned.add(dmTargetName);
+      }
     }
   } catch (e) {
     console.warn("E2E encrypt failed:", e);
@@ -3470,6 +3489,12 @@ function connectSocket() {
     if (callTarget && !callTargetAutoDialed) {
       showCallLinkBanner(callTarget);
     }
+    // Open profile if arriving via ?profile=
+    const profileLink = localStorage.getItem("om_profileLink");
+    if (profileLink) {
+      localStorage.removeItem("om_profileLink");
+      setTimeout(() => showProfile(profileLink), 300);
+    }
   });
 
   socket.on("wallet-link-error", ({ message }) => {
@@ -3675,14 +3700,14 @@ function connectSocket() {
 
   socket.on("chat-stream", ({ streamId, ...msg }) => {
     if (streamId !== currentStreamId) return;
-    renderChatMsg(msg, $("#stream-chat-messages"));
+    renderChatMsg(msg, $("#stream-chat-messages"), { noReactions: true });
   });
 
   socket.on("chat-stream-history", ({ streamId, messages }) => {
     if (streamId !== currentStreamId) return;
     const container = $("#stream-chat-messages");
     container.innerHTML = "";
-    messages.forEach(msg => renderChatMsg(msg, container));
+    messages.forEach(msg => renderChatMsg(msg, container, { noReactions: true }));
   });
 
   // ── DM events ─────────────────────────────────────────────────────────
@@ -4125,6 +4150,19 @@ function handleProfileData(data) {
   let handleHtml = "";
   if (data.xUsername) handleHtml += `<a href="https://x.com/${escapeHtml(data.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(data.xUsername)}</a>`;
   if (data.walletAddress) handleHtml += (handleHtml ? " · " : "") + `<a href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
+  // Add online/offline status
+  if (!profileIsOwn) {
+    const online = users.find(u => u.name.toLowerCase() === (data.username || "").toLowerCase());
+    if (online) {
+      const isIdle = online.status === "idle";
+      handleHtml += (handleHtml ? " · " : "") + `<span style="color:${isIdle ? "var(--amber)" : "var(--green)"}">${isIdle ? "Away" : "Online"}</span>`;
+    } else {
+      // Show last seen from directory data
+      const dirEntry = directoryData.find(d => d.name.toLowerCase() === (data.username || "").toLowerCase());
+      if (dirEntry?.lastSeen) handleHtml += (handleHtml ? " · " : "") + `<span style="color:#555">Last seen ${timeAgo(dirEntry.lastSeen)}</span>`;
+      else handleHtml += (handleHtml ? " · " : "") + `<span style="color:#555">Offline</span>`;
+    }
+  }
   $("#profile-handle").innerHTML = handleHtml;
   let bioHtml = "";
   if (data.customStatus) bioHtml += `<div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px;">${escapeHtml(data.customStatus)}</div>`;
@@ -4146,6 +4184,7 @@ function handleProfileData(data) {
   let actionsHtml = "";
   if (profileIsOwn) {
     // Bio/banner editing handled inline (click bio text or pencil icon on banner)
+    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeHtml(myName).replace(/'/g,"\\'")}')">Share Profile</button>`;
     // Key export for guests (no X or wallet to recover from)
     if (!myXUsername && !myWalletAddress) {
       actionsHtml += `<button class="profile-action-btn" onclick="exportE2EKey()">Export Key</button>`;
@@ -4153,10 +4192,12 @@ function handleProfileData(data) {
     }
   } else {
     const online = users.find(u => u.name.toLowerCase() === data.username.toLowerCase());
+    // Message button always visible and prominent
+    actionsHtml += `<button class="profile-action-btn primary" onclick="openDM(${online?"'"+online.userId+"'":"null"},'${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}',${data.avatar?"'"+data.avatar.replace(/'/g,"\\'")+"'":"null"})">Message</button>`;
     if (online) {
       actionsHtml += `<button class="profile-action-btn primary" onclick="callUser('${online.userId}','${escapeHtml(online.name).replace(/'/g,"\\'")}',${online.avatar?"'"+online.avatar.replace(/'/g,"\\'")+"'":"null"})">Call</button>`;
     }
-    actionsHtml += `<button class="profile-action-btn" onclick="openDM(${online?"'"+online.userId+"'":"null"},'${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}',${data.avatar?"'"+data.avatar.replace(/'/g,"\\'")+"'":"null"})">Message</button>`;
+    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')">Share</button>`;
   }
   $("#profile-actions").innerHTML = actionsHtml;
 
@@ -4461,6 +4502,17 @@ function renderDirectory(filter = "") {
     list.innerHTML = html;
   }
 }
+
+window.copyProfileLink = function(name) {
+  const url = `${window.location.origin}/?profile=${encodeURIComponent(name)}`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast(`Copied: ${url}`, "success", 3000);
+  }).catch(() => {
+    const t = document.createElement("textarea");
+    t.value = url; document.body.appendChild(t); t.select(); document.execCommand("copy"); document.body.removeChild(t);
+    showToast(`Copied: ${url}`, "success", 3000);
+  });
+};
 
 window.directoryOpenDM = function(peerName) {
   document.getElementById("directory-panel").classList.remove("active");
@@ -4911,6 +4963,14 @@ window.addEventListener("load", async () => {
   if (savedAvatar) myAvatar = savedAvatar;
 
   const params = new URLSearchParams(window.location.search);
+
+  // ── Detect ?call= param (personal call links) ────────────────────────
+  // ── Detect ?profile= param (profile links) ────────────────────────
+  if (params.get("profile")) {
+    const profileLink = decodeURIComponent(params.get("profile"));
+    localStorage.setItem("om_profileLink", profileLink);
+    window.history.replaceState({}, "", "/");
+  }
 
   // ── Detect ?call= param (personal call links) ────────────────────────
   if (params.get("call")) {

@@ -841,13 +841,15 @@ function emitNotification(recipientName, notif) {
 
 async function dbSetPublicKey(name, publicKey) {
   const key = name.toLowerCase().trim();
+  const keyStr = typeof publicKey === "string" ? publicKey : JSON.stringify(publicKey);
   if (supabase) {
     try {
-      await supabase.from("user_directory").update({ public_key: typeof publicKey === "string" ? publicKey : JSON.stringify(publicKey) }).eq("name", key);
+      // Use upsert to handle users not yet in directory
+      await supabase.from("user_directory").upsert({ name: key, display_name: name, public_key: keyStr, last_seen: new Date().toISOString() }, { onConflict: "name" });
     } catch (e) { console.warn("PubKey write error:", e.message); }
     return;
   }
-  jsonSet("public_keys", key, typeof publicKey === "string" ? publicKey : JSON.stringify(publicKey));
+  jsonSet("public_keys", key, keyStr);
 }
 
 async function dbGetPublicKey(name) {
