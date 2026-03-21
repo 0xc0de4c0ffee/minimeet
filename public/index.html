@@ -3550,6 +3550,11 @@ function connectSocket() {
     }
 
     registerRetried = false;
+    // If user was already logged in (active session), don't dump to login — just show toast
+    if (myUserId) {
+      showToast(message || "Connection issue — retrying...", "error", 3000);
+      return;
+    }
     showScreen("login-screen");
     $("#login-error").textContent = message;
     $("#name-input").classList.add("error");
