@@ -727,6 +727,35 @@
     }
     .go-live-btn:hover { color: var(--red); }
 
+    /* In-call pair card */
+    .call-pair-card {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 14px; border-radius: 14px;
+      animation: slideUp 0.4s ease both;
+      opacity: 0.6;
+    }
+    .call-pair-avatars {
+      display: flex; align-items: center; flex-shrink: 0;
+    }
+    .call-pair-avatars .avatar:first-child {
+      z-index: 2;
+    }
+    .call-pair-avatars .avatar:last-child {
+      margin-left: -16px; z-index: 1;
+      border: 2px solid var(--bg);
+    }
+    .call-pair-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .call-pair-names { font-size: 14px; font-weight: 500; }
+    .call-pair-status {
+      font-size: 11px; color: var(--green);
+      font-family: var(--font-mono);
+      display: flex; align-items: center; gap: 4px;
+    }
+    .call-pair-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); animation: pulse 2s ease infinite;
+    }
+
     /* Live badge on contact cards */
     .live-badge {
       font-family: var(--font-mono); font-size: 10px; font-weight: 700;
@@ -1153,7 +1182,7 @@
 
     <div class="search-wrap">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" id="search-input" class="search-input" placeholder="Search online users..." />
+      <input type="text" id="search-input" class="search-input" placeholder="Search or add @xhandle..." />
     </div>
     <div id="contacts-list" class="contacts-list"></div>
 
@@ -1488,17 +1517,22 @@ function pickupBadgeHTML(stats) {
   return html;
 }
 
+function formatOnlineTime(ms) {
+  const hours = Math.floor(ms / 3_600_000);
+  const mins = Math.floor((ms % 3_600_000) / 60_000);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
 function updateMyStats() {
   const el = $("#my-stats");
-  if (!myStats || myStats.received === 0) {
-    el.innerHTML = "";
-    return;
-  }
-  const rate = pickupRate(myStats);
-  el.innerHTML = `
-    <div class="my-stats-item"><span>${rate}%</span> pickup</div>
-    ${myStats.streak >= 3 ? `<div class="my-stats-item">🔥<span>${myStats.streak}</span></div>` : ""}
-  `;
+  if (!myStats) { el.innerHTML = ""; return; }
+  const parts = [];
+  if (myStats.totalMeets > 0) parts.push(`<div class="my-stats-item"><span>${myStats.totalMeets}</span> meets</div>`);
+  if (myStats.received > 0) { const rate = pickupRate(myStats); parts.push(`<div class="my-stats-item"><span>${rate}%</span> pickup</div>`); }
+  if (myStats.streak >= 3) parts.push(`<div class="my-stats-item">🔥<span>${myStats.streak}</span></div>`);
+  if (myStats.totalOnlineMs > 60_000) parts.push(`<div class="my-stats-item"><span>${formatOnlineTime(myStats.totalOnlineMs)}</span> online</div>`);
+  el.innerHTML = parts.join("");
 }
 
 // ── Toast ────────────────────────────────────────────────────────────────
@@ -1953,16 +1987,23 @@ $("#pfp-change-input").addEventListener("change", async (e) => {
 
 // ── Render Contacts ──────────────────────────────────────────────────────
 
-function isSaved(name) {
-  return myContacts.includes(name.toLowerCase().trim());
+function isSaved(name, xUsername) {
+  const lower = name.toLowerCase().trim();
+  if (myContacts.includes(lower)) return true;
+  if (xUsername && myContacts.includes("@" + xUsername.toLowerCase().trim())) return true;
+  return false;
 }
 
-function toggleSaveContact(name, e) {
+function toggleSaveContact(name, xUsername, e) {
   e.stopPropagation();
-  if (isSaved(name)) {
+  // Prefer saving by @xhandle for X users
+  const contactKey = xUsername ? "@" + xUsername : name;
+  if (isSaved(name, xUsername)) {
+    // Remove both forms in case both exist
     socket.emit("remove-contact", { contactName: name });
+    if (xUsername) socket.emit("remove-contact", { contactName: "@" + xUsername });
   } else {
-    socket.emit("add-contact", { contactName: name });
+    socket.emit("add-contact", { contactName: contactKey });
   }
 }
 
@@ -1973,10 +2014,11 @@ function renderContactCard(user, i, isOffline) {
   const inner = avatarInner(user.avatar, initials, 13);
   const badge = isOffline ? "" : pickupBadgeHTML(user.stats);
   const handle = user.xUsername ? `<span class="x-handle">@${escapeHtml(user.xUsername)}</span>` : "";
-  const statsLine = user.stats && user.stats.received > 0
-    ? `${user.stats.accepted}/${user.stats.received} answered`
-    : isOffline ? "Offline" : "No calls yet";
-  const saved = isSaved(user.name);
+  const meetsCount = user.stats ? (user.stats.totalMeets || 0) : 0;
+  const statsLine = meetsCount > 0
+    ? `${meetsCount} meet${meetsCount !== 1 ? "s" : ""}${user.stats.totalOnlineMs > 60_000 ? " · " + formatOnlineTime(user.stats.totalOnlineMs) + " online" : ""}`
+    : isOffline ? "Offline" : "New here";
+  const saved = isSaved(user.name, user.xUsername);
   const starSvg = saved
     ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="#E8A83C" stroke="#E8A83C" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
     : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
@@ -1995,7 +2037,7 @@ function renderContactCard(user, i, isOffline) {
         <span class="contact-status">${handle}${handle && statsLine ? " · " : ""}${statsLine}</span>
       </div>
       ${isOffline ? "" : `<button class="poke-btn" onclick="pokeUser('${user.userId}', event)" title="Poke">👋</button>`}
-      <button class="save-btn ${saved ? "saved" : ""}" onclick="toggleSaveContact('${user.name.replace(/'/g, "\\'")}', event)" title="${saved ? "Remove from contacts" : "Save to contacts"}">${starSvg}</button>
+      <button class="save-btn ${saved ? "saved" : ""}" onclick="toggleSaveContact('${user.name.replace(/'/g, "\\'")}', ${user.xUsername ? "'" + user.xUsername.replace(/'/g, "\\'") + "'" : "null"}, event)" title="${saved ? "Remove from contacts" : "Save to contacts"}">${starSvg}</button>
       ${isOffline ? "" : `<button class="poke-btn" onclick="openDM('${user.userId}','${user.name.replace(/'/g, "\\'")}', ${user.avatar ? "'" + user.avatar.replace(/'/g, "\\'") + "'" : "null"}); event.stopPropagation();" title="Message" style="color:#888">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       </button>`}
@@ -2030,6 +2072,25 @@ function renderStreamCard(user, i) {
     </div>`;
 }
 
+function renderCallPairCard(userA, userB, i) {
+  const colorA = getColor(userA.name), colorB = getColor(userB.name);
+  const initialsA = getInitials(userA.name), initialsB = getInitials(userB.name);
+  const bgA = avatarBg(userA.avatar, colorA), bgB = avatarBg(userB.avatar, colorB);
+  const innerA = avatarInner(userA.avatar, initialsA, 13), innerB = avatarInner(userB.avatar, initialsB, 13);
+
+  return `
+    <div class="call-pair-card" style="animation-delay:${i * 0.03}s">
+      <div class="call-pair-avatars">
+        <div class="avatar" style="${bgA}">${innerA}</div>
+        <div class="avatar" style="${bgB}">${innerB}</div>
+      </div>
+      <div class="call-pair-info">
+        <span class="call-pair-names">${escapeHtml(userA.name)} & ${escapeHtml(userB.name)}</span>
+        <span class="call-pair-status"><span class="call-pair-dot"></span> in a mini meet</span>
+      </div>
+    </div>`;
+}
+
 function renderContacts(filter = "") {
   const list = $("#contacts-list");
   const filterLower = filter.toLowerCase();
@@ -2037,30 +2098,57 @@ function renderContacts(filter = "") {
   // Online users (excluding self)
   const onlineOthers = users.filter(u => u.userId !== myUserId);
 
+  // Build call pairs (deduplicated)
+  const callPairs = [];
+  const inCallUserIds = new Set();
+  for (const u of onlineOthers) {
+    if (u.inCallWith && !inCallUserIds.has(u.userId)) {
+      const partner = onlineOthers.find(p => p.userId === u.inCallWith.userId);
+      if (partner) {
+        const matchesFilter = u.name.toLowerCase().includes(filterLower) || partner.name.toLowerCase().includes(filterLower);
+        if (matchesFilter) {
+          callPairs.push([u, partner]);
+          inCallUserIds.add(u.userId);
+          inCallUserIds.add(partner.userId);
+        }
+      }
+    }
+  }
+
   // Users who are streaming
-  const liveUsers = onlineOthers.filter(u => u.streaming && u.name.toLowerCase().includes(filterLower));
-  // Non-streaming users
-  const nonLiveOthers = onlineOthers.filter(u => !u.streaming);
+  const liveUsers = onlineOthers.filter(u => u.streaming && !inCallUserIds.has(u.userId) && u.name.toLowerCase().includes(filterLower));
+  // Available users (not streaming, not in call)
+  const availableOthers = onlineOthers.filter(u => !u.streaming && !inCallUserIds.has(u.userId));
 
   // Saved contacts: split into online and offline
-  const savedOnline = nonLiveOthers.filter(u => isSaved(u.name) && u.name.toLowerCase().includes(filterLower));
-  const savedOfflineNames = myContacts.filter(name => {
-    if (!name.includes(filterLower)) return false;
-    return !onlineOthers.some(u => u.name.toLowerCase().trim() === name);
+  const savedOnline = availableOthers.filter(u => isSaved(u.name, u.xUsername) && u.name.toLowerCase().includes(filterLower));
+  const savedOfflineNames = myContacts.filter(contactName => {
+    if (!contactName.includes(filterLower)) return false;
+    // Check if this contact matches any online user (by name or @xhandle)
+    if (contactName.startsWith("@")) {
+      const handle = contactName.slice(1);
+      return !onlineOthers.some(u => u.xUsername && u.xUsername.toLowerCase() === handle);
+    }
+    return !onlineOthers.some(u => u.name.toLowerCase().trim() === contactName);
   });
-  const savedOffline = savedOfflineNames.map(name => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    avatar: null, stats: null, xUsername: null, userId: null,
-  }));
+  const savedOffline = savedOfflineNames.map(contactName => {
+    const isXHandle = contactName.startsWith("@");
+    const displayName = isXHandle ? contactName : contactName.charAt(0).toUpperCase() + contactName.slice(1);
+    return {
+      name: displayName, avatar: null, stats: null,
+      xUsername: isXHandle ? contactName.slice(1) : null, userId: null,
+    };
+  });
 
-  // Everyone else online (not saved, not streaming)
-  const everyoneElse = nonLiveOthers.filter(u => !isSaved(u.name) && u.name.toLowerCase().includes(filterLower));
+  // Everyone else online (not saved, not streaming, not in call)
+  const everyoneElse = availableOthers.filter(u => !isSaved(u.name, u.xUsername) && u.name.toLowerCase().includes(filterLower));
 
+  const hasCalls = callPairs.length > 0;
   const hasLive = liveUsers.length > 0;
   const hasSaved = savedOnline.length > 0 || savedOffline.length > 0;
   const hasOthers = everyoneElse.length > 0;
 
-  if (!hasLive && !hasSaved && !hasOthers) {
+  if (!hasCalls && !hasLive && !hasSaved && !hasOthers) {
     list.innerHTML = `<div style="text-align:center;color:#666;padding:40px;font-size:14px;">
       ${users.length <= 1 ? 'No other users online yet.<br>Share your link to call someone!' : 'No matches found.'}
     </div>`;
@@ -2069,22 +2157,32 @@ function renderContacts(filter = "") {
 
   let html = "";
   let idx = 0;
+  let hasSection = false;
+
+  if (hasCalls) {
+    html += `<div class="section-label first">In a Call</div>`;
+    callPairs.forEach(([a, b]) => { html += renderCallPairCard(a, b, idx++); });
+    hasSection = true;
+  }
 
   if (hasLive) {
-    html += `<div class="section-label first">Live Now</div>`;
+    if (hasSection) html += `<div class="section-divider"></div>`;
+    html += `<div class="section-label ${hasSection ? "" : "first"}">Live Now</div>`;
     liveUsers.forEach(u => { html += renderStreamCard(u, idx++); });
+    hasSection = true;
   }
 
   if (hasSaved) {
-    if (hasLive) html += `<div class="section-divider"></div>`;
-    html += `<div class="section-label ${hasLive ? "" : "first"}">My Contacts</div>`;
+    if (hasSection) html += `<div class="section-divider"></div>`;
+    html += `<div class="section-label ${hasSection ? "" : "first"}">My Contacts</div>`;
     savedOnline.forEach(u => { html += renderContactCard(u, idx++, false); });
     savedOffline.forEach(u => { html += renderContactCard(u, idx++, true); });
+    hasSection = true;
   }
 
   if (hasOthers) {
-    if (hasSaved || hasLive) html += `<div class="section-divider"></div>`;
-    html += `<div class="section-label ${!hasSaved && !hasLive ? "first" : ""}">Everyone Online</div>`;
+    if (hasSection) html += `<div class="section-divider"></div>`;
+    html += `<div class="section-label ${hasSection ? "" : "first"}">Everyone Online</div>`;
     everyoneElse.forEach(u => { html += renderContactCard(u, idx++, false); });
   }
 
@@ -2173,7 +2271,7 @@ async function callUser(userId, name, avatar) {
   currentRemote = { userId, name, avatar: avatar || null };
   isCaller = true;
   // Clear call-link state
-  if (callTarget) { sessionStorage.removeItem("om_callTarget"); callTarget = null; }
+  if (callTarget) { localStorage.removeItem("om_callTarget"); callTarget = null; }
   $("#call-link-banner").classList.remove("active");
   setupCallUI(name, avatar, "Calling...");
   showScreen("call-screen");
@@ -2242,14 +2340,13 @@ function connectSocket() {
     // Restore auto-meet state
     autoMeetEnabled = !!autoMeet;
     autoMeetCooldownHours = cooldownHours || 24;
-    updateAutoReachUI();
+    updateAutoMeetUI();
     // Fetch saved contacts
     socket.emit("get-contacts");
     socket.emit("chat-history");
+    showScreen("contacts-screen");
     if (reconnected) {
       showToast("Reconnected!", "success");
-    } else {
-      showScreen("contacts-screen");
     }
     // Show call-link banner if arriving via ?call=
     if (callTarget && !callTargetAutoDialed) {
@@ -2258,6 +2355,7 @@ function connectSocket() {
   });
 
   socket.on("register-error", ({ message }) => {
+    showScreen("login-screen");
     $("#login-error").textContent = message;
     $("#name-input").classList.add("error");
     $("#join-btn").disabled = false;
@@ -2568,6 +2666,21 @@ $("#name-input").addEventListener("input", () => {
 
 // Search
 $("#search-input").addEventListener("input", (e) => renderContacts(e.target.value));
+$("#search-input").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const val = e.target.value.trim();
+  if (val.startsWith("@") && val.length > 1) {
+    const handle = val.toLowerCase();
+    if (!myContacts.includes(handle)) {
+      socket.emit("add-contact", { contactName: handle });
+      showToast(`Added ${val} to contacts`, "success");
+      e.target.value = "";
+      renderContacts("");
+    } else {
+      showToast(`${val} is already in your contacts`, "info");
+    }
+  }
+});
 
 // Invite
 // My Link — copies personal call URL
@@ -2587,7 +2700,7 @@ $("#invite-btn").addEventListener("click", () => {
 // Auto-Meet toggle
 const COOLDOWN_OPTIONS = [1, 6, 12, 24, 48, 72];
 
-function updateAutoReachUI() {
+function updateAutoMeetUI() {
   $("#auto-meet-btn").classList.toggle("active", autoMeetEnabled);
   $("#auto-meet-cooldown").textContent = autoMeetCooldownHours + "h";
 }
@@ -2597,13 +2710,13 @@ $("#auto-meet-btn").addEventListener("click", (e) => {
   if (e.target.id === "auto-meet-cooldown" || e.target.closest(".auto-meet-cooldown")) {
     const idx = COOLDOWN_OPTIONS.indexOf(autoMeetCooldownHours);
     autoMeetCooldownHours = COOLDOWN_OPTIONS[(idx + 1) % COOLDOWN_OPTIONS.length];
-    updateAutoReachUI();
+    updateAutoMeetUI();
     if (socket) socket.emit("set-auto-meet", { enabled: autoMeetEnabled, cooldownHours: autoMeetCooldownHours });
     showToast(`Auto-Meet cooldown: ${autoMeetCooldownHours}h`, "success");
     return;
   }
   autoMeetEnabled = !autoMeetEnabled;
-  updateAutoReachUI();
+  updateAutoMeetUI();
   if (socket) socket.emit("set-auto-meet", { enabled: autoMeetEnabled, cooldownHours: autoMeetCooldownHours });
   showToast(autoMeetEnabled ? `Auto-Meet on (${autoMeetCooldownHours}h cooldown)` : "Auto-Meet off", autoMeetEnabled ? "success" : "info");
 });
@@ -2671,7 +2784,7 @@ $("#sign-out-link").addEventListener("click", (e) => {
   localStorage.removeItem("om_xUsername");
   localStorage.removeItem("om_last_name");
   localStorage.removeItem("om_avatar");
-  sessionStorage.removeItem("om_callTarget");
+  localStorage.removeItem("om_callTarget");
   // Disconnect socket
   if (socket) socket.disconnect();
   // Reset state
@@ -2710,6 +2823,7 @@ function checkAutoCall(userList) {
     statusEl.innerHTML = `<div class="dot"></div> Online! Calling now...`;
 
     callTargetAutoDialed = true;
+    localStorage.removeItem("om_callTarget");
     setTimeout(() => {
       banner.classList.remove("active");
       callUser(targetUser.userId, targetUser.name, targetUser.avatar || null);
@@ -2780,11 +2894,10 @@ window.addEventListener("load", async () => {
   // ── Detect ?call= param (personal call links) ────────────────────────
   if (params.get("call")) {
     callTarget = decodeURIComponent(params.get("call"));
-    sessionStorage.setItem("om_callTarget", callTarget);
-    // Clean URL but keep ?call for X OAuth return
-  } else if (sessionStorage.getItem("om_callTarget")) {
-    // Restore after OAuth redirect
-    callTarget = sessionStorage.getItem("om_callTarget");
+    localStorage.setItem("om_callTarget", callTarget);
+  } else if (localStorage.getItem("om_callTarget")) {
+    // Restore after refresh or OAuth redirect
+    callTarget = localStorage.getItem("om_callTarget");
   }
 
   // ── Handle X OAuth redirect ─────────────────────────────────────────
@@ -2835,7 +2948,13 @@ window.addEventListener("load", async () => {
 
   if (savedUserId && savedName) {
     myName = savedName;
+    // Hide login screen while reconnecting to avoid flash
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     connectSocket();
+    // If reconnect fails after 3s, show login
+    setTimeout(() => {
+      if (!myUserId) showScreen("login-screen");
+    }, 3000);
   }
 
   // Pre-fill name if saved

@@ -268,7 +268,7 @@ async function dbSetAvatar(name, dataUrl) {
 const statsCache = new Map();
 
 function defaultStats() {
-  return { received: 0, accepted: 0, declined: 0, missed: 0, streak: 0, best_streak: 0 };
+  return { received: 0, accepted: 0, declined: 0, missed: 0, streak: 0, best_streak: 0, totalMeets: 0, totalOnlineMs: 0 };
 }
 
 async function dbGetStats(name) {
@@ -278,7 +278,7 @@ async function dbGetStats(name) {
     try {
       const { data } = await supabase.from("call_stats").select("*").eq("name", key).single();
       if (data) {
-        const stats = { received: data.received||0, accepted: data.accepted||0, declined: data.declined||0, missed: data.missed||0, streak: data.streak||0, best_streak: data.best_streak||0 };
+        const stats = { received: data.received||0, accepted: data.accepted||0, declined: data.declined||0, missed: data.missed||0, streak: data.streak||0, best_streak: data.best_streak||0, totalMeets: data.total_meets||0, totalOnlineMs: data.total_online_ms||0 };
         statsCache.set(key, stats);
         return stats;
       }
@@ -298,7 +298,7 @@ async function dbSetStats(name, stats) {
   statsCache.set(key, stats);
   if (supabase) {
     try {
-      await supabase.from("call_stats").upsert({ name: key, received: stats.received, accepted: stats.accepted, declined: stats.declined, missed: stats.missed, streak: stats.streak, best_streak: stats.best_streak, updated_at: new Date().toISOString() });
+      await supabase.from("call_stats").upsert({ name: key, received: stats.received, accepted: stats.accepted, declined: stats.declined, missed: stats.missed, streak: stats.streak, best_streak: stats.best_streak, total_meets: stats.totalMeets, total_online_ms: stats.totalOnlineMs, updated_at: new Date().toISOString() });
     } catch (e) { console.warn("Stats write error:", e.message); }
     return;
   }
@@ -308,7 +308,7 @@ async function dbSetStats(name, stats) {
 async function recordCallOutcome(calleeName, outcome) {
   const stats = await dbGetStats(calleeName);
   stats.received++;
-  if (outcome === "accepted") { stats.accepted++; stats.streak++; if (stats.streak > stats.best_streak) stats.best_streak = stats.streak; }
+  if (outcome === "accepted") { stats.accepted++; stats.totalMeets++; stats.streak++; if (stats.streak > stats.best_streak) stats.best_streak = stats.streak; }
   else if (outcome === "declined") { stats.declined++; stats.streak = 0; }
   else if (outcome === "missed") { stats.missed++; stats.streak = 0; }
   await dbSetStats(calleeName, stats);
@@ -391,6 +391,43 @@ function jsonSet(store, key, value) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(path.join(DATA_DIR, `${store}.json`), JSON.stringify(jsonStores[store]), "utf-8");
   } catch (e) { console.warn(`JSON write error (${store}):`, e.message); }
+}
+
+// ─── Public chat persistence ─────────────────────────────────────────────────
+
+async function dbSavePublicMsg(msg) {
+  if (supabase) {
+    try {
+      await supabase.from("public_messages").insert({
+        id: msg.id, name: msg.name, avatar: msg.avatar,
+        text: msg.text, created_at: new Date(msg.ts).toISOString(),
+      });
+    } catch (e) { console.warn("Public msg write error:", e.message); }
+    return;
+  }
+  // JSON fallback: append to file
+  const stored = jsonGet("public_messages", "_all");
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  msgs.push(msg);
+  if (msgs.length > MAX_CHAT_HISTORY) msgs.splice(0, msgs.length - MAX_CHAT_HISTORY);
+  jsonSet("public_messages", "_all", JSON.stringify(msgs));
+}
+
+async function dbLoadPublicMsgs(limit = 50) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("public_messages")
+        .select("*").order("created_at", { ascending: false }).limit(limit);
+      if (data) return data.reverse().map(d => ({
+        id: d.id, name: d.name, avatar: d.avatar,
+        text: d.text, ts: new Date(d.created_at).getTime(),
+      }));
+    } catch (e) { console.warn("Public msg read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("public_messages", "_all");
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  return msgs.slice(-limit);
 }
 
 // ─── Last-call timestamps (per pair) ─────────────────────────────────────────
@@ -543,11 +580,21 @@ function broadcastUserList() {
           break;
         }
       }
+      // Check if user is in a call
+      let inCallWith = null;
+      for (const [, call] of activeCalls) {
+        if (call.startedAt && (call.callerId === userId || call.calleeId === userId)) {
+          const partnerId = call.callerId === userId ? call.calleeId : call.callerId;
+          const partner = onlineUsers.get(partnerId);
+          if (partner) inCallWith = { userId: partnerId, name: partner.name, avatar: partner.avatar || null };
+          break;
+        }
+      }
       users.push({
         userId, name: data.name, status: data.status,
         avatar: data.avatar || null, stats: data.stats || null,
         xUsername: data.xUsername || null, autoMeet: data.autoMeet || false,
-        streaming,
+        streaming, inCallWith,
       });
     }
   }
@@ -656,7 +703,7 @@ io.on("connection", (socket) => {
       const eu = onlineUsers.get(reconnectUserId);
       if (eu.name.toLowerCase() !== trimmedName.toLowerCase()) { socket.emit("register-error", { message: "Name mismatch on reconnect" }); return; }
       if (disconnectTimers.has(reconnectUserId)) { clearTimeout(disconnectTimers.get(reconnectUserId)); disconnectTimers.delete(reconnectUserId); }
-      eu.socketId = socket.id; eu.disconnectedAt = null; eu.status = "online";
+      eu.socketId = socket.id; eu.disconnectedAt = null; eu.status = "online"; eu.connectedAt = Date.now();
       if (safeAvatar) { eu.avatar = safeAvatar; await dbSetAvatar(eu.name, safeAvatar); }
       socket.userId = reconnectUserId;
       const resolvedAvatar = eu.avatar || await dbGetAvatar(eu.name);
@@ -696,7 +743,7 @@ io.on("connection", (socket) => {
 
     onlineUsers.set(userId, {
       socketId: socket.id, name: trimmedName, status: "online",
-      avatar: resolvedAvatar, stats, disconnectedAt: null,
+      avatar: resolvedAvatar, stats, disconnectedAt: null, connectedAt: Date.now(),
       xUsername: xUsername || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours,
     });
     takenNames.set(trimmedName.toLowerCase(), userId);
@@ -855,8 +902,8 @@ io.on("connection", (socket) => {
   });
 
   // ── Chat ─────────────────────────────────────────────────────────────────
-  socket.on("chat-public", ({ text }) => {
-    if (!rateLimit(socket, "chat", 10, 10_000)) return; // 10 msgs per 10s
+  socket.on("chat-public", async ({ text }) => {
+    if (!rateLimit(socket, "chat", 10, 10_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     const trimmed = (text || "").trim().slice(0, 500);
@@ -865,6 +912,7 @@ io.on("connection", (socket) => {
     publicChat.push(msg);
     if (publicChat.length > MAX_CHAT_HISTORY) publicChat.shift();
     io.emit("chat-public", msg);
+    dbSavePublicMsg(msg); // persist (non-blocking)
   });
 
   socket.on("chat-history", () => {
@@ -957,6 +1005,8 @@ io.on("connection", (socket) => {
     const callee = onlineUsers.get(call.calleeId);
     const caller = onlineUsers.get(call.callerId);
     if (callee) { await recordCallOutcome(callee.name, "accepted"); await refreshUserStats(call.calleeId); }
+    // Also count for the caller
+    if (caller) { const cs = await dbGetStats(caller.name); cs.totalMeets++; await dbSetStats(caller.name, cs); await refreshUserStats(call.callerId); }
     if (caller && callee) await dbSetLastCall(caller.name, callee.name);
     call.timerId = setTimeout(() => {
       const s1 = getSocketByUserId(call.callerId); const s2 = getSocketByUserId(call.calleeId);
@@ -1009,7 +1059,7 @@ io.on("connection", (socket) => {
     }
 
     userData.disconnectedAt = Date.now(); broadcastUserList();
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       for (const [callId, call] of activeCalls) {
         if (call.callerId === userId || call.calleeId === userId) {
           const oid = call.callerId === userId ? call.calleeId : call.callerId;
@@ -1017,6 +1067,13 @@ io.on("connection", (socket) => {
           if (os) os.emit("call-ended", { callId, duration: call.startedAt ? Math.floor((Date.now() - call.startedAt) / 1000) : 0 });
           cleanupCall(callId);
         }
+      }
+      // Flush accumulated online time
+      if (userData.connectedAt) {
+        const sessionMs = Date.now() - userData.connectedAt;
+        const stats = await dbGetStats(userData.name);
+        stats.totalOnlineMs = (stats.totalOnlineMs || 0) + sessionMs;
+        await dbSetStats(userData.name, stats);
       }
       takenNames.delete(userData.name.toLowerCase());
       onlineUsers.delete(userId); disconnectTimers.delete(userId);
@@ -1103,6 +1160,9 @@ setInterval(async () => {
 }, AUTO_REACH_CHECK_MS);
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`\n  📞 minimeet.cc on http://localhost:${PORT} | DB: ${supabase ? "Supabase" : "JSON"} | X OAuth: ${X_CLIENT_ID ? "✅" : "❌"}\n`);
+server.listen(PORT, async () => {
+  // Load persisted public chat into memory
+  const savedMsgs = await dbLoadPublicMsgs(MAX_CHAT_HISTORY);
+  publicChat.push(...savedMsgs);
+  console.log(`\n  📞 minimeet.cc on http://localhost:${PORT} | DB: ${supabase ? "Supabase" : "JSON"} | X OAuth: ${X_CLIENT_ID ? "✅" : "❌"} | Chat: ${savedMsgs.length} msgs loaded\n`);
 });
