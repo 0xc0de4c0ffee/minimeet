@@ -149,6 +149,8 @@ app.get("/auth/x/callback", async (req, res) => {
       displayName: xUser.name,
       avatar,
     });
+    // Also store avatar in the avatars table so dbGetAvatar finds it
+    if (avatar) await dbSetAvatar(xUser.name, avatar);
 
     // Create a temporary auth token the client can use
     const authToken = base64url(crypto.randomBytes(24));
@@ -509,17 +511,15 @@ async function dbSaveDM(senderName, receiverName, msg) {
   const pair = [senderName, receiverName].map(n => n.toLowerCase().trim()).sort().join(":");
   if (supabase) {
     try {
-      await supabase.from("direct_messages").insert({
-        id: msg.id, pair, sender: senderName.toLowerCase().trim(),
-        sender_name: msg.fromName, text: msg.text,
-        created_at: new Date(msg.ts).toISOString(),
-      });
+      const row = { id: msg.id, pair, sender: senderName.toLowerCase().trim(), sender_name: msg.fromName, text: msg.text, created_at: new Date(msg.ts).toISOString() };
+      if (msg.encrypted) row.encrypted = true;
+      await supabase.from("direct_messages").insert(row);
     } catch (e) { console.warn("DM write error:", e.message); }
     return;
   }
   const stored = jsonGet("direct_messages", pair);
   let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
-  msgs.push({ id: msg.id, sender: senderName.toLowerCase().trim(), senderName: msg.fromName, text: msg.text, ts: msg.ts });
+  msgs.push({ id: msg.id, sender: senderName.toLowerCase().trim(), senderName: msg.fromName, text: msg.text, encrypted: msg.encrypted || false, ts: msg.ts });
   if (msgs.length > 100) msgs.splice(0, msgs.length - 100);
   jsonSet("direct_messages", pair, JSON.stringify(msgs));
 }
@@ -532,7 +532,7 @@ async function dbLoadDMs(nameA, nameB, limit = 50) {
         .select("*").eq("pair", pair)
         .order("created_at", { ascending: false }).limit(limit);
       if (data) return data.reverse().map(d => ({
-        id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, ts: new Date(d.created_at).getTime(),
+        id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, encrypted: d.encrypted || false, ts: new Date(d.created_at).getTime(),
       }));
     } catch (e) { console.warn("DM read error:", e.message); }
     return [];
@@ -552,12 +552,12 @@ async function dbGetProfile(name) {
   if (supabase) {
     try {
       const { data } = await supabase.from("user_profiles").select("*").eq("name", key).single();
-      if (data) { const p = { bio: data.bio || null, banner: data.banner || null, customStatus: data.custom_status || null }; profileCache.set(key, p); return p; }
+      if (data) { const p = { bio: data.bio || null, banner: data.banner || null, customStatus: data.custom_status || null, e2eKey: data.e2e_key || null }; profileCache.set(key, p); return p; }
     } catch {}
-    return { bio: null, banner: null, customStatus: null };
+    return { bio: null, banner: null, customStatus: null, e2eKey: null };
   }
   const stored = jsonGet("user_profiles", key);
-  let p; try { p = stored ? JSON.parse(stored) : { bio: null, banner: null, customStatus: null }; } catch { p = { bio: null, banner: null, customStatus: null }; }
+  let p; try { p = stored ? JSON.parse(stored) : { bio: null, banner: null, customStatus: null, e2eKey: null }; } catch { p = { bio: null, banner: null, customStatus: null, e2eKey: null }; }
   profileCache.set(key, p);
   return p;
 }
@@ -567,7 +567,9 @@ async function dbSetProfile(name, profile) {
   profileCache.set(key, profile);
   if (supabase) {
     try {
-      await supabase.from("user_profiles").upsert({ name: key, bio: profile.bio, banner: profile.banner, custom_status: profile.customStatus || null, updated_at: new Date().toISOString() });
+      const row = { name: key, bio: profile.bio, banner: profile.banner, custom_status: profile.customStatus || null, updated_at: new Date().toISOString() };
+      if (profile.e2eKey !== undefined) row.e2e_key = profile.e2eKey;
+      await supabase.from("user_profiles").upsert(row);
     } catch (e) { console.warn("Profile write error:", e.message); }
     return;
   }
@@ -831,6 +833,97 @@ function emitNotification(recipientName, notif) {
       const s = getSocketByUserId(userId);
       if (s) s.emit("new-notification", notif);
       break;
+    }
+  }
+}
+
+// ─── E2E encryption public keys ──────────────────────────────────────────────
+
+async function dbSetPublicKey(name, publicKey) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      await supabase.from("user_directory").update({ public_key: typeof publicKey === "string" ? publicKey : JSON.stringify(publicKey) }).eq("name", key);
+    } catch (e) { console.warn("PubKey write error:", e.message); }
+    return;
+  }
+  jsonSet("public_keys", key, typeof publicKey === "string" ? publicKey : JSON.stringify(publicKey));
+}
+
+async function dbGetPublicKey(name) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("user_directory").select("public_key").eq("name", key).single();
+      if (data?.public_key) { try { return JSON.parse(data.public_key); } catch { return data.public_key; } }
+    } catch {}
+    return null;
+  }
+  const stored = jsonGet("public_keys", key);
+  if (stored) { try { return JSON.parse(stored); } catch { return stored; } }
+  return null;
+}
+
+// ─── Wallet inbox claiming ───────────────────────────────────────────────────
+
+async function claimWalletInbox(walletAddress, userName, socket) {
+  const addr = walletAddress.toLowerCase();
+  const name = userName.toLowerCase().trim();
+  if (addr === name) return; // already using address as name
+
+  if (supabase) {
+    try {
+      // Find DM pairs that used the raw wallet address
+      const { data: dms } = await supabase.from("direct_messages").select("id, pair, sender, sender_name, text, encrypted, created_at")
+        .like("pair", `%${addr.replace(/[%_\\]/g, "")}%`).order("created_at", { ascending: true });
+      if (dms && dms.length > 0) {
+        let claimed = 0;
+        for (const dm of dms) {
+          // Rewrite pair: replace wallet address with username
+          const newPair = dm.pair.replace(addr, name);
+          if (newPair !== dm.pair) {
+            await supabase.from("direct_messages").update({ pair: newPair }).eq("id", dm.id);
+            claimed++;
+          }
+        }
+        // Also migrate notifications
+        await supabase.from("notifications").update({ recipient: name }).eq("recipient", addr);
+        if (claimed > 0) {
+          socket.emit("wallet-inbox-claimed", { count: claimed, walletAddress: addr });
+          console.log(`📬 ${userName} claimed ${claimed} messages sent to ${addr.slice(0,6)}...`);
+        }
+      }
+    } catch (e) { console.warn("Wallet inbox claim error:", e.message); }
+  } else {
+    // JSON fallback: scan all DM pairs
+    const store = jsonStores["direct_messages"] || {};
+    let claimed = 0;
+    const keysToRename = [];
+    for (const [pair, val] of Object.entries(store)) {
+      if (pair.includes(addr)) {
+        const newPair = pair.replace(addr, name);
+        keysToRename.push([pair, newPair, val]);
+      }
+    }
+    for (const [oldPair, newPair, val] of keysToRename) {
+      delete store[oldPair];
+      // Merge with any existing DMs under the new pair
+      const existing = store[newPair];
+      if (existing) {
+        try {
+          const oldMsgs = JSON.parse(val);
+          const existMsgs = JSON.parse(existing);
+          store[newPair] = JSON.stringify([...existMsgs, ...oldMsgs].sort((a, b) => a.ts - b.ts));
+        } catch { store[newPair] = val; }
+      } else {
+        store[newPair] = val;
+      }
+      claimed++;
+    }
+    if (claimed > 0) {
+      jsonSet("direct_messages", "_all", JSON.stringify(store));
+      socket.emit("wallet-inbox-claimed", { count: claimed, walletAddress: addr });
+      console.log(`📬 ${userName} claimed ${claimed} DM threads sent to ${addr.slice(0,6)}...`);
     }
   }
 }
@@ -1118,7 +1211,8 @@ function broadcastUserList() {
         userId, name: data.name, status: data.status,
         avatar: data.avatar || null, stats: data.stats || null,
         xUsername: data.xUsername || null, walletAddress: data.walletAddress || null,
-        customStatus: data.customStatus || null, autoMeet: data.autoMeet || false,
+        customStatus: data.customStatus || null, publicKey: data.publicKey || null,
+        autoMeet: data.autoMeet || false,
         streaming, inCallWith,
       });
     }
@@ -1250,7 +1344,11 @@ io.on("connection", (socket) => {
       // On reconnect, only accept wallet if it matches what's already stored (no unsigned updates)
       if (safeWallet && eu.walletAddress && safeWallet !== eu.walletAddress) safeWallet = null;
       socket.userId = reconnectUserId;
-      const resolvedAvatar = eu.avatar || await dbGetAvatar(eu.name);
+      let resolvedAvatar = eu.avatar || await dbGetAvatar(eu.name);
+      if (!resolvedAvatar && eu.xUsername) {
+        const xp = await dbGetXProfile(eu.xUsername);
+        if (xp?.avatar) { resolvedAvatar = xp.avatar; await dbSetAvatar(eu.name, resolvedAvatar); }
+      }
       eu.avatar = resolvedAvatar;
       eu.stats = await dbGetStats(eu.name);
       const prefs = await dbGetPrefs(eu.name);
@@ -1298,7 +1396,12 @@ io.on("connection", (socket) => {
 
     const userId = uuidv4().slice(0, 8);
     socket.userId = userId;
-    const storedAvatar = await dbGetAvatar(trimmedName);
+    let storedAvatar = await dbGetAvatar(trimmedName);
+    // Fallback: try x_profiles for avatar if not in avatars table
+    if (!storedAvatar && xUsername) {
+      const xp = await dbGetXProfile(xUsername);
+      if (xp?.avatar) { storedAvatar = xp.avatar; await dbSetAvatar(trimmedName, storedAvatar); }
+    }
     const resolvedAvatar = safeAvatar || storedAvatar || null;
     if (safeAvatar && safeAvatar !== storedAvatar) await dbSetAvatar(trimmedName, safeAvatar);
     const stats = await dbGetStats(trimmedName);
@@ -1313,8 +1416,13 @@ io.on("connection", (socket) => {
       avatar: resolvedAvatar, stats, disconnectedAt: null, connectedAt: Date.now(),
       xUsername: xUsername || null, walletAddress: storedWallet || null,
       customStatus: storedProfile.customStatus || null,
+      publicKey: null, // loaded via register-pubkey
       autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours,
     });
+
+    // Load stored public key for E2E encryption
+    const storedPubKey = await dbGetPublicKey(trimmedName);
+    if (storedPubKey) onlineUsers.get(userId).publicKey = storedPubKey;
     takenNames.set(trimmedName.toLowerCase(), userId);
 
     // Issue session token for all users (needed for reconnection after server restart)
@@ -1328,6 +1436,11 @@ io.on("connection", (socket) => {
     // Add verified users (X or wallet) to the directory
     if (xUsername || storedWallet) {
       dbAddToDirectory(trimmedName, { displayName: trimmedName, xUsername: xUsername || null, walletAddress: storedWallet || null, avatar: resolvedAvatar });
+    }
+
+    // Claim wallet inbox: migrate DMs sent to the raw wallet address to this user's name
+    if (storedWallet) {
+      claimWalletInbox(storedWallet, trimmedName, socket);
     }
   });
 
@@ -1578,12 +1691,14 @@ io.on("connection", (socket) => {
   });
 
   // P2P direct messages (persisted)
-  socket.on("chat-dm", async ({ toUserId, toName, text }) => {
+  socket.on("chat-dm", async ({ toUserId, toName, text, image, encrypted }) => {
     if (!rateLimit(socket, "chat", 10, 10_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
-    const trimmed = (text || "").trim().slice(0, 500);
-    if (!trimmed) return;
+    const trimmed = (text || "").trim().slice(0, 2000); // larger limit for encrypted base64
+    const safeImage = (!encrypted && image && typeof image === "string" && image.startsWith("data:image/") && image.length <= 500_000) ? image : null;
+    if (!trimmed && !safeImage) return;
+    const isEncrypted = !!encrypted;
 
     let targetName = null;
     let targetUserId = toUserId || null;
@@ -1592,7 +1707,7 @@ io.on("connection", (socket) => {
       // Online target by userId
       const target = onlineUsers.get(toUserId);
       targetName = target.name;
-      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, image: safeImage, encrypted: isEncrypted, ts: Date.now() };
       if (!target.disconnectedAt) {
         const ts = getSocketByUserId(toUserId);
         if (ts) ts.emit("chat-dm", msg);
@@ -1600,12 +1715,31 @@ io.on("connection", (socket) => {
       socket.emit("chat-dm-sent", { toUserId, toName: targetName, ...msg });
       dbSaveDM(userData.name, targetName, msg);
       // DM notification
-      const dmNotif = await dbCreateNotification(targetName, "dm", userData.name, null, trimmed);
+      const dmNotif = await dbCreateNotification(targetName, "dm", userData.name, null, isEncrypted ? "[encrypted message]" : trimmed);
       emitNotification(targetName, dmNotif);
     } else if (toName && typeof toName === "string") {
-      // Offline target by name — persist for when they come online
+      // Offline target by name or wallet address
       targetName = toName.trim().slice(0, 60);
-      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+      // If it's a wallet address, check if a registered user owns it
+      if (/^0x[0-9a-f]{40}$/i.test(targetName)) {
+        const owner = await dbGetWalletOwner(targetName.toLowerCase());
+        if (owner) {
+          // Resolve to registered user — check if they're online
+          const onlineOwner = [...onlineUsers.entries()].find(([, d]) => d.name.toLowerCase() === owner);
+          if (onlineOwner && !onlineOwner[1].disconnectedAt) {
+            const ts = getSocketByUserId(onlineOwner[0]);
+            const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, image: safeImage, encrypted: isEncrypted, ts: Date.now() };
+            if (ts) ts.emit("chat-dm", msg);
+            socket.emit("chat-dm-sent", { toUserId: onlineOwner[0], toName: owner, ...msg });
+            dbSaveDM(userData.name, owner, msg);
+            const dmNotif = await dbCreateNotification(owner, "dm", userData.name, null, isEncrypted ? "[encrypted message]" : trimmed);
+            emitNotification(owner, dmNotif);
+            return;
+          }
+          targetName = owner; // use registered name for storage
+        }
+      }
+      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, image: safeImage, encrypted: isEncrypted, ts: Date.now() };
       // Check if they happen to be online under a different lookup
       const onlineTarget = [...onlineUsers.entries()].find(([, d]) => d.name.toLowerCase() === targetName.toLowerCase());
       if (onlineTarget) {
@@ -1618,7 +1752,7 @@ io.on("connection", (socket) => {
       }
       socket.emit("chat-dm-sent", { toUserId: targetUserId, toName: targetName, ...msg });
       dbSaveDM(userData.name, targetName, msg);
-      const dmNotif2 = await dbCreateNotification(targetName, "dm", userData.name, null, trimmed);
+      const dmNotif2 = await dbCreateNotification(targetName, "dm", userData.name, null, isEncrypted ? "[encrypted message]" : trimmed);
       emitNotification(targetName, dmNotif2);
     }
   });
@@ -1628,7 +1762,13 @@ io.on("connection", (socket) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     if (!peerName || typeof peerName !== "string") return;
-    const messages = await dbLoadDMs(userData.name, peerName);
+    let resolvedPeer = peerName;
+    // If peerName is a wallet address, resolve to the registered user's name
+    if (/^0x[0-9a-f]{40}$/i.test(peerName)) {
+      const owner = await dbGetWalletOwner(peerName.toLowerCase());
+      if (owner) resolvedPeer = owner;
+    }
+    const messages = await dbLoadDMs(userData.name, resolvedPeer);
     socket.emit("dm-history", { peerName, messages });
   });
 
@@ -1765,12 +1905,21 @@ io.on("connection", (socket) => {
         } catch {}
       }
     }
-    // Final fallback: check x_profiles for avatar
+    // Final fallback: check x_profiles for avatar + xUsername
+    if (!xUsername) {
+      // Try to find xUsername by scanning x_profiles for this display name
+      if (supabase) {
+        try {
+          const { data } = await supabase.from("x_profiles").select("username, avatar").eq("display_name", displayName).single();
+          if (data) { xUsername = data.username; if (!avatar) avatar = data.avatar; }
+        } catch {}
+      }
+    }
     if (!avatar && xUsername) {
       const xProfile = await dbGetXProfile(xUsername);
-      if (xProfile?.avatar) avatar = xProfile.avatar;
+      if (xProfile?.avatar) { avatar = xProfile.avatar; dbSetAvatar(key, avatar); }
     }
-    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, stats, postCount });
+    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, stats, postCount, customStatus: profile.customStatus || null });
   });
 
   socket.on("update-profile", async ({ bio, banner }) => {
@@ -1797,14 +1946,62 @@ io.on("connection", (socket) => {
     await dbMarkNotificationsRead(userData.name);
   });
 
+  // E2E encryption key exchange
+  socket.on("register-pubkey", async ({ publicKey }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    // Validate P-256 ECDH public key format
+    if (!publicKey || typeof publicKey !== "object" || publicKey.kty !== "EC" || publicKey.crv !== "P-256" || !publicKey.x || !publicKey.y) return;
+    // Strip any private key fields if accidentally included
+    const safePubKey = { kty: publicKey.kty, crv: publicKey.crv, x: publicKey.x, y: publicKey.y };
+    userData.publicKey = safePubKey;
+    await dbSetPublicKey(userData.name, safePubKey);
+    broadcastUserList();
+  });
+
+  // E2E key backup for X/guest users (cross-device recovery)
+  socket.on("backup-e2e-key", async ({ e2eKey }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!e2eKey || typeof e2eKey !== "string" || e2eKey.length > 5000) return;
+    const profile = await dbGetProfile(userData.name);
+    profile.e2eKey = e2eKey;
+    await dbSetProfile(userData.name, profile);
+  });
+
+  socket.on("get-e2e-backup", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const profile = await dbGetProfile(userData.name);
+    socket.emit("e2e-backup", { e2eKey: profile.e2eKey || null });
+  });
+
+  socket.on("get-pubkey", async ({ peerName }) => {
+    if (!peerName) return;
+    const key = peerName.toLowerCase().trim();
+    // Check online users first
+    for (const [, d] of onlineUsers) {
+      if (d.name.toLowerCase() === key && d.publicKey) {
+        socket.emit("peer-pubkey", { peerName, publicKey: d.publicKey });
+        return;
+      }
+    }
+    // Fallback to DB
+    const pubKey = await dbGetPublicKey(key);
+    socket.emit("peer-pubkey", { peerName, publicKey: pubKey });
+  });
+
   // Poke — lightweight nudge
-  socket.on("poke", ({ toUserId }) => {
+  socket.on("poke", async ({ toUserId }) => {
     if (!rateLimit(socket, "poke", 3, 30_000)) return; // 3 pokes per 30s
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     const target = onlineUsers.get(toUserId); if (!target || target.disconnectedAt) return;
     const ts = getSocketByUserId(toUserId);
     if (ts) ts.emit("poke", { fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null });
+    // Poke notification
+    const notif = await dbCreateNotification(target.name, "poke", userData.name, null, null);
+    emitNotification(target.name, notif);
   });
 
   socket.on("call-user", ({ calleeId }) => {
@@ -1817,10 +2014,11 @@ io.on("connection", (socket) => {
     if (isUserInCall(callerId) || isUserStreaming(callerId)) { socket.emit("call-error", { message: "You're already in a call or stream" }); return; }
 
     const callId = uuidv4().slice(0, 12);
+    const calleeName = callee.name; // capture name before timeout fires
     const ringTimerId = setTimeout(async () => {
       const call = activeCalls.get(callId);
       if (call && !call.startedAt) {
-        await recordCallOutcome(callee.name, "missed");
+        await recordCallOutcome(calleeName, "missed");
         await refreshUserStats(calleeId);
         socket.emit("call-not-answered", { callId });
         const cs = getSocketByUserId(calleeId); if (cs) cs.emit("call-cancelled", { callId });
@@ -1986,6 +2184,50 @@ app.get("/api/stats", async (req, res) => {
   res.json({ totalVisitors: totalVisitors, onlineUsers: onlineUsers.size, registeredUsers: dirSize, totalMeets, totalPosts });
 });
 
+// ─── DM conversations list ────────────────────────────────────────────────────
+
+app.get("/api/dm-conversations", async (req, res) => {
+  const name = (req.query.name || "").toLowerCase().trim().replace(/[%_\\]/g, ""); // sanitize LIKE wildcards
+  if (!name || name.length < 2) return res.json([]);
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("direct_messages")
+        .select("pair, text, encrypted, created_at")
+        .like("pair", `%${name}%`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (data) {
+        // Group by pair, take latest message per conversation
+        const convos = new Map();
+        for (const d of data) {
+          if (!convos.has(d.pair)) {
+            const parts = d.pair.split(":");
+            const peerName = parts.find(p => p !== name) || parts[0];
+            convos.set(d.pair, { peerName, lastMessage: d.encrypted ? "[encrypted]" : d.text?.slice(0, 50), lastTime: new Date(d.created_at).getTime() });
+          }
+        }
+        return res.json([...convos.values()].sort((a, b) => b.lastTime - a.lastTime));
+      }
+    } catch {}
+  } else {
+    const store = jsonStores["direct_messages"] || {};
+    const convos = [];
+    for (const [pair, val] of Object.entries(store)) {
+      if (!pair.includes(name)) continue;
+      try {
+        const msgs = JSON.parse(val);
+        if (msgs.length === 0) continue;
+        const last = msgs[msgs.length - 1];
+        const parts = pair.split(":");
+        const peerName = parts.find(p => p !== name) || parts[0];
+        convos.push({ peerName, lastMessage: last.encrypted ? "[encrypted]" : (last.text || "").slice(0, 50), lastTime: last.ts });
+      } catch {}
+    }
+    return res.json(convos.sort((a, b) => b.lastTime - a.lastTime));
+  }
+  res.json([]);
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // ─── Auto-Meet: periodic matcher ───────────────────────────────────────────
@@ -2037,10 +2279,11 @@ setInterval(async () => {
       if (!callerData || !calleeData) { autoMeetPending.delete(pairKey); continue; }
 
       const callId = uuidv4().slice(0, 12);
+      const autoCalleeName = calleeData.name; // capture before timeout
       const ringTimerId = setTimeout(async () => {
         const call = activeCalls.get(callId);
         if (call && !call.startedAt) {
-          await recordCallOutcome(calleeData.name, "missed");
+          await recordCallOutcome(autoCalleeName, "missed");
           await refreshUserStats(callee.userId);
           const s1 = getSocketByUserId(caller.userId); if (s1) s1.emit("call-not-answered", { callId });
           const s2 = getSocketByUserId(callee.userId); if (s2) s2.emit("call-cancelled", { callId });

@@ -235,7 +235,7 @@
     }
     .directory-close:hover { color: var(--text); }
     .directory-list {
-      max-height: 240px; overflow-y: auto; padding: 6px;
+      max-height: 50vh; overflow-y: auto; padding: 6px;
     }
     .directory-item {
       display: flex; align-items: center; gap: 8px;
@@ -264,37 +264,26 @@
 
     /* Quick post bar */
     .quick-post {
-      display: none; /* shown for verified users */
-      gap: 8px; align-items: flex-end;
+      display: none;
+      flex-direction: column; gap: 8px;
       padding: 8px 0; margin-bottom: 4px;
     }
     .quick-post.active { display: flex; }
     .quick-post-input {
-      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
       color: var(--text); padding: 8px 12px; border-radius: 10px;
       font-size: 13px; font-family: var(--font-body); outline: none;
       resize: none; min-height: 20px; max-height: 80px; line-height: 1.4;
+      box-sizing: border-box;
     }
     .quick-post-input:focus { border-color: rgba(232,69,60,0.4); }
-    .quick-post-actions {
-      display: flex; flex-direction: column; gap: 6px; align-items: center;
-    }
-    .quick-post-img-btn {
-      background: none; border: none; color: var(--text-muted);
-      cursor: pointer; padding: 4px; transition: color 0.15s;
-    }
-    .quick-post-img-btn:hover { color: var(--text); }
-    .quick-post-btn {
-      padding: 8px 16px; background: var(--red); border: none;
-      color: #fff; font-size: 13px; border-radius: 10px; cursor: pointer;
-      font-family: var(--font-body); font-weight: 600; white-space: nowrap;
-    }
-    .quick-post-btn:hover { opacity: 0.9; }
     .quick-post-preview {
-      width: 100%; position: relative;
+      width: 100%; position: relative; display: none;
     }
+    .quick-post-preview.has-image { display: block; }
     .quick-post-preview img {
-      max-height: 120px; border-radius: 8px; border: 1px solid var(--border);
+      max-height: 150px; border-radius: 8px; border: 1px solid var(--border);
+      max-width: 100%; object-fit: cover;
     }
     .quick-post-preview-close {
       position: absolute; top: 4px; right: 4px;
@@ -302,6 +291,20 @@
       width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
       font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center;
     }
+    .quick-post-actions {
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .quick-post-img-btn {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; padding: 4px; transition: color 0.15s;
+    }
+    .quick-post-img-btn:hover { color: var(--text); }
+    .quick-post-btn {
+      padding: 6px 16px; background: var(--red); border: none;
+      color: #fff; font-size: 13px; border-radius: 10px; cursor: pointer;
+      font-family: var(--font-body); font-weight: 600; white-space: nowrap;
+    }
+    .quick-post-btn:hover { opacity: 0.9; }
 
     /* Tabs */
     .tab-bar {
@@ -602,9 +605,9 @@
       flex-wrap: wrap;
     }
     .online-count {
-      font-size: 12px; color: var(--text-muted);
+      font-size: 10px; color: #555;
       font-family: var(--font-mono);
-      display: flex; align-items: center; gap: 5px;
+      display: flex; align-items: center; gap: 4px;
     }
     .online-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -757,10 +760,10 @@
     .my-stats:empty { display: none; }
     /* Auto-Meet toggle */
     .auto-meet-toggle {
-      display: flex; align-items: center; gap: 6px;
-      font-family: var(--font-mono); font-size: 11px;
-      color: var(--text-muted); cursor: pointer;
-      padding: 5px 10px; border-radius: 8px;
+      display: flex; align-items: center; gap: 4px;
+      font-family: var(--font-mono); font-size: 10px;
+      color: #555; cursor: pointer;
+      padding: 3px 8px; border-radius: 6px;
       border: 1px solid var(--border); background: none;
       transition: all 0.2s; white-space: nowrap;
     }
@@ -1337,6 +1340,24 @@
       border-radius: 12px; color: #fff; font-size: 14px; font-weight: 600;
       font-family: var(--font-body); cursor: pointer;
     }
+    .dm-image-preview {
+      display: none; padding: 4px 12px; position: relative;
+    }
+    .dm-image-preview.has-image { display: block; }
+    .dm-image-preview img {
+      max-height: 100px; max-width: 100%; border-radius: 8px;
+      border: 1px solid var(--border); object-fit: cover;
+    }
+    .dm-image-preview .dm-img-close {
+      position: absolute; top: 8px; right: 16px;
+      background: rgba(0,0,0,0.6); border: none; color: #fff;
+      width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+      font-size: 12px; display: flex; align-items: center; justify-content: center;
+    }
+    .dm-msg img.dm-msg-img {
+      max-width: 200px; max-height: 150px; border-radius: 8px;
+      margin-top: 4px; cursor: pointer; display: block;
+    }
     /* Poke button on contact cards */
     .poke-btn {
       width: 32px; height: 32px; border-radius: 8px;
@@ -1499,10 +1520,15 @@
       <div class="dm-messages" id="dm-messages">
         <div class="dm-empty">Send a message...</div>
       </div>
+      <div class="dm-image-preview" id="dm-image-preview"></div>
       <div class="dm-input-row">
+        <button class="quick-post-img-btn" id="dm-img-btn" title="Send image">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </button>
         <input type="text" class="dm-input" id="dm-input" placeholder="Type a message..." maxlength="500" />
         <button class="dm-send" id="dm-send">Send</button>
       </div>
+      <input type="file" id="dm-file-input" accept="image/*" style="display:none;" />
     </div>
   </div>
 
@@ -1594,16 +1620,16 @@
           </button>
           <div class="notif-panel" id="notif-panel"></div>
         </div>
+      </div>
+      <div class="info-right">
+        <div class="my-stats" id="my-stats"></div>
         <div class="online-count">
           <div class="online-dot"></div>
           <span id="online-count-num">0</span> online
         </div>
-      </div>
-      <div class="info-right">
-        <div class="my-stats" id="my-stats"></div>
-        <button class="auto-meet-toggle" id="auto-meet-btn" title="Auto-call mutual contacts you haven't talked to recently">
+        <button class="auto-meet-toggle" id="auto-meet-btn" title="Auto-call mutual contacts">
           <div class="auto-meet-dot"></div>
-          <span>Auto-Meet</span>
+          <span class="auto-meet-label">Auto</span>
           <span class="auto-meet-cooldown" id="auto-meet-cooldown"></span>
         </button>
         <button class="invite-btn" id="invite-btn">
@@ -1625,7 +1651,7 @@
     <!-- Directory dropdown -->
     <div class="directory-panel" id="directory-panel">
       <div class="directory-header">
-        <input type="text" class="directory-search" id="directory-search" placeholder="Search users..." />
+        <input type="text" class="directory-search" id="directory-search" placeholder="Name, @handle, 0x, .eth, .wei..." />
         <button class="directory-close" id="directory-close">&times;</button>
       </div>
       <div class="directory-list" id="directory-list"></div>
@@ -1651,13 +1677,13 @@
     <!-- Quick post -->
     <div class="quick-post" id="quick-post">
       <textarea class="quick-post-input" id="quick-post-input" placeholder="What's on your mind?" maxlength="500" rows="1"></textarea>
+      <div class="quick-post-preview" id="quick-post-preview"></div>
       <div class="quick-post-actions">
         <button class="quick-post-img-btn" id="quick-post-img-btn" title="Add image">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
         </button>
         <button class="quick-post-btn" id="quick-post-btn">Post</button>
       </div>
-      <div class="quick-post-preview" id="quick-post-preview" style="display:none;"></div>
       <input type="file" id="quick-post-file" accept="image/*" style="display:none;" />
     </div>
 
@@ -1669,7 +1695,7 @@
 
     <div class="search-wrap" id="search-wrap">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input type="text" id="search-input" class="search-input" placeholder="Search or add @xhandle..." />
+      <input type="text" id="search-input" class="search-input" placeholder="Search, @handle, or 0x address..." />
     </div>
     <div id="contacts-list" class="contacts-list"></div>
     <div id="feed-list" class="contacts-list" style="display:none;"></div>
@@ -1939,20 +1965,21 @@ function storeAvatar(dataUrl) {
 
 async function resolveWalletDisplayName(address) {
   const RPCS = ['https://ethereum.publicnode.com', 'https://1rpc.io/eth'];
-  // Step 1: .wei reverse resolve
+  const timeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+  // Step 1: .wei reverse resolve (5s timeout)
   try {
     const rpc = new ethers.JsonRpcProvider(RPCS[0], 1, { staticNetwork: true });
     const ns = new ethers.Contract('0x0000000000696760E15f265e828DB644A0c242EB',
       ['function reverseResolve(address) view returns (string)'], rpc);
-    const weiName = await ns.reverseResolve(address);
+    const weiName = await timeout(ns.reverseResolve(address), 5000);
     if (weiName) return weiName.toLowerCase();
-  } catch (e) { console.warn('wei resolve failed:', e); }
-  // Step 2: ENS .eth reverse resolve
+  } catch (e) { console.warn('wei resolve failed:', e.message); }
+  // Step 2: ENS .eth reverse resolve (5s timeout)
   try {
     const rpc = new ethers.JsonRpcProvider(RPCS[0], 1, { staticNetwork: true });
-    const ensName = await rpc.lookupAddress(address);
+    const ensName = await timeout(rpc.lookupAddress(address), 5000);
     if (ensName) return ensName.toLowerCase();
-  } catch (e) { console.warn('ENS resolve failed:', e); }
+  } catch (e) { console.warn('ENS resolve failed:', e.message); }
   // Step 3: truncated address
   return address.slice(0, 6) + '...' + address.slice(-4);
 }
@@ -1979,6 +2006,188 @@ async function requestWalletSignature(address) {
 
   return { signature, nonce };
 }
+
+// ── E2E Encryption ──────────────────────────────────────────────────────
+
+const e2eSharedSecrets = new Map(); // peerName -> CryptoKey
+
+async function getOrCreateE2EKeypair() {
+  // 1. Check localStorage
+  const stored = localStorage.getItem("e2e_keypair");
+  if (stored) {
+    try {
+      const kp = JSON.parse(stored);
+      const priv = await crypto.subtle.importKey("jwk", kp.privateKey, { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      const pub = await crypto.subtle.importKey("jwk", kp.publicKey, { name: "ECDH", namedCurve: "P-256" }, true, []);
+      return { privateKey: priv, publicKey: pub, publicKeyJWK: kp.publicKey, privateKeyJWK: kp.privateKey };
+    } catch { localStorage.removeItem("e2e_keypair"); }
+  }
+
+  // 2. Try to recover encrypted backup from server (X or any verified user)
+  if (socket) {
+    try {
+      const serverKey = await new Promise((resolve) => {
+        socket.emit("get-e2e-backup");
+        const handler = ({ e2eKey }) => { socket.off("e2e-backup", handler); resolve(e2eKey); };
+        socket.on("e2e-backup", handler);
+        setTimeout(() => { socket.off("e2e-backup", handler); resolve(null); }, 3000);
+      });
+      if (serverKey) {
+        // Backup exists — prompt for password to decrypt
+        const password = prompt("Enter your encryption password to recover your DM key:");
+        if (password) {
+          try {
+            const decrypted = await decryptWithPassword(serverKey, password);
+            const kp = JSON.parse(decrypted);
+            localStorage.setItem("e2e_keypair", JSON.stringify(kp));
+            const priv = await crypto.subtle.importKey("jwk", kp.privateKey, { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+            const pub = await crypto.subtle.importKey("jwk", kp.publicKey, { name: "ECDH", namedCurve: "P-256" }, true, []);
+            showToast("Encryption key recovered!", "success");
+            return { privateKey: priv, publicKey: pub, publicKeyJWK: kp.publicKey, privateKeyJWK: kp.privateKey };
+          } catch { showToast("Wrong password — generating new key", "error"); }
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Generate new keypair
+  const keyPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const pubJWK = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const privJWK = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+  const keypairData = { publicKey: pubJWK, privateKey: privJWK };
+  localStorage.setItem("e2e_keypair", JSON.stringify(keypairData));
+
+  // 4. Prompt for password and backup encrypted key to server
+  if (socket && (myXUsername || myWalletAddress)) {
+    // Slight delay so UI is ready
+    setTimeout(async () => {
+      const password = prompt("Create an encryption password for your DM key.\nThis protects your key backup so you can recover DMs on other devices.\nThe server cannot read your messages without this password.");
+      if (password && password.length >= 4) {
+        try {
+          const encrypted = await encryptWithPassword(JSON.stringify(keypairData), password);
+          socket.emit("backup-e2e-key", { e2eKey: encrypted });
+          showToast("Encryption key backed up securely", "success");
+        } catch (e) { console.warn("Key backup failed:", e); }
+      } else {
+        showToast("No password set — key is local only. Export it from your profile for backup.", "info", 5000);
+      }
+    }, 1000);
+  }
+
+  return { privateKey: keyPair.privateKey, publicKey: keyPair.publicKey, publicKeyJWK: pubJWK, privateKeyJWK: privJWK };
+}
+
+async function deriveSharedSecret(peerPublicKeyJWK) {
+  const cacheKey = JSON.stringify(peerPublicKeyJWK);
+  if (e2eSharedSecrets.has(cacheKey)) return e2eSharedSecrets.get(cacheKey);
+  const kp = await getOrCreateE2EKeypair();
+  const peerKey = await crypto.subtle.importKey("jwk", peerPublicKeyJWK, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const sharedBits = await crypto.subtle.deriveBits({ name: "ECDH", public: peerKey }, kp.privateKey, 256);
+  const aesKey = await crypto.subtle.importKey("raw", sharedBits, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  e2eSharedSecrets.set(cacheKey, aesKey);
+  return aesKey;
+}
+
+async function encryptDM(plaintext, sharedKey) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, sharedKey, encoded);
+  const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(ciphertext), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptDM(ciphertextB64, sharedKey) {
+  try {
+    const raw = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0));
+    const iv = raw.slice(0, 12);
+    const ciphertext = raw.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, sharedKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  } catch { return "[cannot decrypt]"; }
+}
+
+async function getPeerPublicKey(peerName) {
+  // Check online users first
+  const peer = users.find(u => u.name.toLowerCase() === peerName.toLowerCase());
+  if (peer?.publicKey) return peer.publicKey;
+  // Request from server
+  return new Promise((resolve) => {
+    if (!socket) { resolve(null); return; }
+    const handler = ({ peerName: name, publicKey }) => {
+      if (name.toLowerCase() === peerName.toLowerCase()) {
+        socket.off("peer-pubkey", handler);
+        resolve(publicKey || null);
+      }
+    };
+    socket.on("peer-pubkey", handler);
+    socket.emit("get-pubkey", { peerName });
+    setTimeout(() => { socket.off("peer-pubkey", handler); resolve(null); }, 3000);
+  });
+}
+
+// Password-based encryption for E2E key backup
+async function encryptWithPassword(plaintext, password) {
+  const enc = new TextEncoder();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits", "deriveKey"]);
+  const aesKey = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, enc.encode(plaintext));
+  // Pack: salt (16) + iv (12) + ciphertext
+  const packed = new Uint8Array(16 + 12 + ciphertext.byteLength);
+  packed.set(salt); packed.set(iv, 16); packed.set(new Uint8Array(ciphertext), 28);
+  return btoa(String.fromCharCode(...packed));
+}
+
+async function decryptWithPassword(ciphertextB64, password) {
+  const enc = new TextEncoder();
+  const raw = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0));
+  const salt = raw.slice(0, 16);
+  const iv = raw.slice(16, 28);
+  const ciphertext = raw.slice(28);
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits", "deriveKey"]);
+  const aesKey = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, ciphertext);
+  return new TextDecoder().decode(decrypted);
+}
+
+window.exportE2EKey = function() {
+  const stored = localStorage.getItem("e2e_keypair");
+  if (!stored) { showToast("No encryption key to export", "error"); return; }
+  const blob = new Blob([stored], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "minimeet-e2e-key.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast("Key exported — keep this file safe!", "success");
+};
+
+window.importE2EKey = function() {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = ".json";
+  input.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      const text = await file.text();
+      const kp = JSON.parse(text);
+      if (!kp.publicKey || !kp.privateKey) throw new Error("Invalid key file");
+      // Verify it's a valid keypair
+      await crypto.subtle.importKey("jwk", kp.privateKey, { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+      await crypto.subtle.importKey("jwk", kp.publicKey, { name: "ECDH", namedCurve: "P-256" }, true, []);
+      localStorage.setItem("e2e_keypair", text);
+      e2eSharedSecrets.clear();
+      // Re-register public key
+      if (socket) socket.emit("register-pubkey", { publicKey: kp.publicKey });
+      showToast("Key imported — encrypted DMs restored!", "success");
+    } catch (err) {
+      showToast("Invalid key file", "error");
+    }
+  };
+  input.click();
+};
 
 // ── Audio ────────────────────────────────────────────────────────────────
 
@@ -2638,21 +2847,67 @@ function appendDMMsg(msg, container) {
   if (empty) empty.remove();
   const el = document.createElement("div");
   el.className = `dm-msg ${msg.sent ? "sent" : "received"}`;
-  el.innerHTML = `<div>${escapeHtml(msg.text)}</div><div class="dm-msg-time">${formatChatTime(msg.ts)}</div>`;
+  const lockIcon = msg.encrypted ? ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.4;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>' : '';
+  let content = "";
+  if (msg.text) content += `<div>${escapeHtml(msg.text)}</div>`;
+  if (msg.image) content += `<img class="dm-msg-img" src="${escapeHtml(msg.image)}" alt="" onclick="window.open(this.src,'_blank')" />`;
+  content += `<div class="dm-msg-time">${formatChatTime(msg.ts)}${lockIcon}</div>`;
+  el.innerHTML = content;
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
 
-function sendDM() {
+let pendingDMImage = null;
+
+async function sendDM() {
   const input = $("#dm-input");
   const text = input.value.trim();
-  if (!text || !socket || (!dmTargetUserId && !dmTargetName)) return;
-  if (dmTargetUserId) {
-    socket.emit("chat-dm", { toUserId: dmTargetUserId, text });
-  } else {
-    socket.emit("chat-dm", { toName: dmTargetName, text });
-  }
+  const image = pendingDMImage;
+  if ((!text && !image) || !socket || (!dmTargetUserId && !dmTargetName)) return;
   input.value = "";
+  clearDMImage();
+
+  // Bundle text + image into payload for encryption
+  const payload = image ? JSON.stringify({ t: text || "", i: image }) : text;
+  const isRich = !!image; // rich = has image, needs JSON parse on decrypt
+
+  // Try to encrypt
+  let finalText = payload;
+  let encrypted = false;
+  try {
+    const peerPubKey = await getPeerPublicKey(dmTargetName);
+    if (peerPubKey) {
+      const sharedKey = await deriveSharedSecret(peerPubKey);
+      finalText = await encryptDM(payload, sharedKey);
+      encrypted = true;
+    } else {
+      showToast("No encryption key — sending unencrypted", "error", 3000);
+    }
+  } catch (e) {
+    console.warn("E2E encrypt failed:", e);
+    showToast("Encryption failed — sending unencrypted", "error", 3000);
+  }
+
+  // Add locally for sender (server echo is ciphertext)
+  if (encrypted) {
+    const dmKey = dmTargetUserId || dmTargetName;
+    if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
+    const entry = { id: Date.now().toString(36), text: text || "", image, ts: Date.now(), sent: true, encrypted: true };
+    dmMessages.get(dmKey).push(entry);
+    appendDMMsg(entry);
+    playSendSound();
+  }
+
+  const msg = { text: finalText, encrypted };
+  if (isRich && !encrypted) { msg.text = text || ""; msg.image = image; } // plaintext with image
+  if (dmTargetUserId) { msg.toUserId = dmTargetUserId; } else { msg.toName = dmTargetName; }
+  socket.emit("chat-dm", msg);
+}
+
+function clearDMImage() {
+  pendingDMImage = null;
+  const preview = document.getElementById("dm-image-preview");
+  if (preview) { preview.classList.remove("has-image"); preview.innerHTML = ""; }
 }
 
 function pokeUser(userId, e) {
@@ -3159,7 +3414,7 @@ function connectSocket() {
     myXUsername = xUsername || null;
     myWalletAddress = walletAddress || null;
     myCustomStatus = customStatus || null;
-    myWalletSignature = null; myWalletNonce = null; // single-use
+    myWalletSignature = null; myWalletNonce = null; registerRetried = false; // single-use, reset retry flag
     localStorage.setItem("om_userId", userId);
     localStorage.setItem("om_name", name);
     if (xUsername) localStorage.setItem("om_xUsername", xUsername);
@@ -3189,7 +3444,12 @@ function connectSocket() {
     socket.emit("chat-history");
     resetIdleTimer();
     loadStats();
+    loadDirectory(); // backfills contact pfps from directory
     if (socket) socket.emit("get-notifications");
+    // Register E2E public key for encrypted DMs
+    getOrCreateE2EKeypair().then(kp => {
+      if (socket && kp.publicKeyJWK) socket.emit("register-pubkey", { publicKey: kp.publicKeyJWK });
+    }).catch(e => console.warn("E2E key setup failed:", e));
     // Show quick-post for verified users
     const qp = document.getElementById("quick-post");
     if (qp) qp.classList.toggle("active", !!(xUsername || walletAddress));
@@ -3220,6 +3480,11 @@ function connectSocket() {
     myWalletAddress = walletAddress;
     if (walletAddress) localStorage.setItem("om_walletAddress", walletAddress);
     updateLinkButtons();
+  });
+
+  socket.on("wallet-inbox-claimed", ({ count, walletAddress }) => {
+    const addr = walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4);
+    showToast(`📬 ${count} message${count !== 1 ? "s" : ""} sent to ${addr} claimed!`, "success", 5000);
   });
 
   let registerRetried = false;
@@ -3421,12 +3686,24 @@ function connectSocket() {
   });
 
   // ── DM events ─────────────────────────────────────────────────────────
-  socket.on("chat-dm", (msg) => {
+  socket.on("chat-dm", async (msg) => {
     const peerId = msg.fromUserId;
     if (!dmMessages.has(peerId)) dmMessages.set(peerId, []);
-    const entry = { id: msg.id, text: msg.text, ts: msg.ts, sent: false };
+    let text = msg.text;
+    let image = msg.image || null;
+    if (msg.encrypted) {
+      try {
+        const senderPubKey = await getPeerPublicKey(msg.fromName);
+        if (senderPubKey) {
+          const sharedKey = await deriveSharedSecret(senderPubKey);
+          const decrypted = await decryptDM(msg.text, sharedKey);
+          // Check if it's a rich message (JSON with text + image)
+          try { const rich = JSON.parse(decrypted); if (rich.t !== undefined) { text = rich.t; image = rich.i || null; } else { text = decrypted; } } catch { text = decrypted; }
+        } else { text = "[encrypted]"; }
+      } catch { text = "[cannot decrypt]"; }
+    }
+    const entry = { id: msg.id, text, image, ts: msg.ts, sent: false, encrypted: msg.encrypted };
     dmMessages.get(peerId).push(entry);
-    // If DM panel is open for this person, render it
     if (dmTargetUserId === peerId) {
       appendDMMsg(entry);
     }
@@ -3442,6 +3719,8 @@ function connectSocket() {
   });
 
   socket.on("chat-dm-sent", (msg) => {
+    // Skip echo for encrypted messages — already added locally in sendDM
+    if (msg.encrypted) { playSendSound(); return; }
     const dmKey = msg.toUserId || msg.toName;
     if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
     const entry = { id: msg.id, text: msg.text, ts: msg.ts, sent: true };
@@ -3453,7 +3732,7 @@ function connectSocket() {
     playSendSound();
   });
 
-  socket.on("dm-history", ({ peerName, messages }) => {
+  socket.on("dm-history", async ({ peerName, messages }) => {
     if (!messages || messages.length === 0) {
       // If DM panel is open and empty, show placeholder
       if (dmTargetName && dmTargetName.toLowerCase() === peerName.toLowerCase()) {
@@ -3471,9 +3750,24 @@ function connectSocket() {
     const existing = dmMessages.get(dmKey) || [];
     const historyIds = new Set(messages.map(m => m.id));
     const myNameLower = myName.toLowerCase().trim();
-    const historyEntries = messages.map(m => ({
-      id: m.id, text: m.text, ts: m.ts, sent: m.sender === myNameLower,
-    }));
+    // Decrypt encrypted history messages
+    let peerPubKey = null;
+    const historyEntries = [];
+    for (const m of messages) {
+      let text = m.text;
+      let image = m.image || null;
+      if (m.encrypted) {
+        try {
+          if (!peerPubKey) peerPubKey = await getPeerPublicKey(peerName);
+          if (peerPubKey) {
+            const sharedKey = await deriveSharedSecret(peerPubKey);
+            const decrypted = await decryptDM(m.text, sharedKey);
+            try { const rich = JSON.parse(decrypted); if (rich.t !== undefined) { text = rich.t; image = rich.i || null; } else { text = decrypted; } } catch { text = decrypted; }
+          } else { text = "[encrypted]"; }
+        } catch { text = "[cannot decrypt]"; }
+      }
+      historyEntries.push({ id: m.id, text, image, ts: m.ts, sent: m.sender === myNameLower, encrypted: m.encrypted });
+    }
     const latestHistoryTs = messages.length > 0 ? Math.max(...messages.map(m => m.ts)) : 0;
     // Only keep in-memory entries that have an id not in history AND are newer
     const newer = existing.filter(e => e.id && !historyIds.has(e.id) && e.ts > latestHistoryTs);
@@ -3570,6 +3864,8 @@ function connectSocket() {
     playNotifSound();
     if (notif.type === "like") showToast(`${notif.fromUser} liked your post`, "info", 2000);
     else if (notif.type === "reply") showToast(`${notif.fromUser} replied to your post`, "info", 2000);
+    else if (notif.type === "poke") showToast(`${notif.fromUser} poked you 👋`, "info", 2000);
+    else if (notif.type === "dm") showToast(`${notif.fromUser}: ${(notif.preview || "").slice(0, 40)}`, "info", 2000);
   });
 
   socket.on("poke", ({ fromUserId, fromName, fromAvatar }) => {
@@ -3830,11 +4126,14 @@ function handleProfileData(data) {
   if (data.xUsername) handleHtml += `<a href="https://x.com/${escapeHtml(data.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(data.xUsername)}</a>`;
   if (data.walletAddress) handleHtml += (handleHtml ? " · " : "") + `<a href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
   $("#profile-handle").innerHTML = handleHtml;
+  let bioHtml = "";
+  if (data.customStatus) bioHtml += `<div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px;">${escapeHtml(data.customStatus)}</div>`;
   if (data.bio) {
-    $("#profile-bio").innerHTML = linkify(data.bio);
+    bioHtml += linkify(data.bio);
   } else if (profileIsOwn) {
-    $("#profile-bio").innerHTML = '<span style="color:#555;cursor:pointer;" onclick="editBio()">Add a bio...</span>';
+    bioHtml += '<span style="color:#555;cursor:pointer;" onclick="editBio()">Add a bio...</span>';
   }
+  $("#profile-bio").innerHTML = bioHtml;
 
   let statsHtml = "";
   if (data.postCount > 0) statsHtml += `<div><span>${data.postCount}</span> posts</div>`;
@@ -3846,8 +4145,12 @@ function handleProfileData(data) {
   // Actions
   let actionsHtml = "";
   if (profileIsOwn) {
-    actionsHtml += `<button class="profile-action-btn" onclick="editBio()">Edit Bio</button>`;
-    actionsHtml += `<button class="profile-action-btn" onclick="editBanner()">Change Banner</button>`;
+    // Bio/banner editing handled inline (click bio text or pencil icon on banner)
+    // Key export for guests (no X or wallet to recover from)
+    if (!myXUsername && !myWalletAddress) {
+      actionsHtml += `<button class="profile-action-btn" onclick="exportE2EKey()">Export Key</button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="importE2EKey()">Import Key</button>`;
+    }
   } else {
     const online = users.find(u => u.name.toLowerCase() === data.username.toLowerCase());
     if (online) {
@@ -3860,14 +4163,21 @@ function handleProfileData(data) {
   // Compose box for own profile
   if (profileIsOwn) {
     $("#profile-compose").innerHTML = `
-      <div class="post-compose">
+      <div class="post-compose" style="flex-direction:column;gap:8px;">
         <textarea class="post-compose-input" id="post-input" placeholder="What's on your mind?" maxlength="500"></textarea>
-        <button class="post-compose-btn" onclick="submitPost()">Post</button>
-      </div>`;
+        <div class="quick-post-preview" id="profile-post-preview"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <button class="quick-post-img-btn" onclick="document.getElementById('profile-post-file').click()" title="Add image">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </button>
+          <button class="post-compose-btn" onclick="submitPost()">Post</button>
+        </div>
+      </div>
+      <input type="file" id="profile-post-file" accept="image/*" style="display:none;" onchange="handleProfilePostImage(this)" />`;
   }
 }
 
-function editBio() {
+window.editBio = function() {
   const bioEl = $("#profile-bio");
   const current = bioEl.textContent === "Add a bio..." ? "" : bioEl.textContent;
   bioEl.innerHTML = `<textarea class="bio-edit-area" id="bio-edit" maxlength="200">${escapeHtml(current)}</textarea>
@@ -3884,7 +4194,7 @@ function saveBio() {
   showProfile(profileTarget);
 }
 
-function editBanner() {
+window.editBanner = function() {
   const input = document.createElement("input");
   input.type = "file"; input.accept = "image/*";
   input.onchange = async (e) => {
@@ -3894,7 +4204,7 @@ function editBanner() {
     $("#profile-banner").style.backgroundImage = `url(${dataUrl})`;
   };
   input.click();
-}
+};
 
 function resizeBanner(file) {
   return new Promise((resolve) => {
@@ -3919,13 +4229,34 @@ function resizeBanner(file) {
   });
 }
 
+let pendingProfilePostImage = null;
+
+window.handleProfilePostImage = async function(input) {
+  const file = input.files[0]; if (!file) return;
+  const dataUrl = await resizeBanner(file);
+  pendingProfilePostImage = dataUrl;
+  const preview = document.getElementById("profile-post-preview");
+  if (preview) {
+    preview.classList.add("has-image");
+    preview.innerHTML = `<img src="${dataUrl}" alt=""><button class="quick-post-preview-close" onclick="pendingProfilePostImage=null;this.parentElement.classList.remove('has-image');this.parentElement.innerHTML='';">&times;</button>`;
+  }
+  input.value = "";
+};
+
 function submitPost(parentId) {
   const input = parentId ? document.getElementById("reply-input-" + parentId) : document.getElementById("post-input");
   if (!input) return;
   const text = input.value.trim();
-  if (!text || !socket) return;
-  socket.emit("create-post", { text, parentId: parentId || null });
+  const image = parentId ? null : pendingProfilePostImage;
+  if (!text && !image) return;
+  if (!socket) return;
+  socket.emit("create-post", { text, parentId: parentId || null, image });
   input.value = "";
+  if (!parentId) {
+    pendingProfilePostImage = null;
+    const preview = document.getElementById("profile-post-preview");
+    if (preview) { preview.classList.remove("has-image"); preview.innerHTML = ""; }
+  }
 }
 
 function renderPost(post, isThread = false) {
@@ -4003,7 +4334,8 @@ function renderNotifications(notifications) {
     if (n.type === "like") text = `<strong>${escapeHtml(n.fromUser)}</strong> liked your post`;
     else if (n.type === "reply") text = `<strong>${escapeHtml(n.fromUser)}</strong> replied: ${escapeHtml(n.preview || "")}`;
     else if (n.type === "dm") text = `<strong>${escapeHtml(n.fromUser)}</strong>: ${escapeHtml(n.preview || "")}`;
-    const onclick = n.postId ? `showProfile(profileTarget || '${escapeHtml(myName).replace(/'/g,"\\'")}'); showThread('${n.postId}')` : "";
+    else if (n.type === "poke") text = `<strong>${escapeHtml(n.fromUser)}</strong> poked you 👋`;
+    let onclick; if (n.postId) onclick = `showProfile(profileTarget||'${escapeHtml(myName).replace(/'/g,"\\'")}');showThread('${n.postId}')`; else if (n.type==="dm") onclick = `openDM(null,'${escapeHtml(n.fromUser).replace(/'/g,"\\'")}',null);document.getElementById('notif-panel').classList.remove('active')`; else onclick = `showProfile('${escapeHtml(n.fromUser).replace(/'/g,"\\'")}')`;
     return `<div class="notif-item${cls}" onclick="${onclick}">
       <div class="notif-item-text">${text}</div>
       <div class="notif-item-time">${timeAgo(n.createdAt)}</div>
@@ -4017,7 +4349,22 @@ let directoryData = [];
 async function loadDirectory() {
   try {
     const res = await fetch("/api/directory");
-    if (res.ok) directoryData = await res.json();
+    if (res.ok) {
+      directoryData = await res.json();
+      // Backfill contact cache from directory (provides pfps for offline contacts)
+      const cache = JSON.parse(localStorage.getItem("om_contact_cache") || "{}");
+      let updated = false;
+      for (const u of directoryData) {
+        const key = u.xUsername ? "@" + u.xUsername.toLowerCase() : (u.name || "").toLowerCase();
+        if (!cache[key] || (!cache[key].avatar && u.avatar)) {
+          cache[key] = { name: u.name, avatar: u.avatar || null, xUsername: u.xUsername || null, walletAddress: u.walletAddress || null, stats: cache[key]?.stats || null, lastSeen: u.lastSeen || cache[key]?.lastSeen || null };
+          // Also cache by name
+          cache[(u.name || "").toLowerCase()] = cache[key];
+          updated = true;
+        }
+      }
+      if (updated) localStorage.setItem("om_contact_cache", JSON.stringify(cache));
+    }
   } catch {}
 }
 
@@ -4038,9 +4385,46 @@ async function loadStats() {
   } catch {}
 }
 
+let dmConversations = [];
+
+async function loadDMConversations() {
+  if (!myName) return;
+  try {
+    const res = await fetch(`/api/dm-conversations?name=${encodeURIComponent(myName.toLowerCase())}`);
+    if (res.ok) dmConversations = await res.json();
+  } catch {}
+}
+
 function renderDirectory(filter = "") {
   const list = document.getElementById("directory-list");
   const lower = filter.toLowerCase();
+  let html = "";
+
+  // Section 1: DM conversations (if any, and no active filter or filter matches)
+  const filteredConvos = dmConversations.filter(c => {
+    if (!lower) return true;
+    return c.peerName.toLowerCase().includes(lower);
+  });
+  if (filteredConvos.length > 0) {
+    html += '<div style="font-size:10px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Messages</div>';
+    html += filteredConvos.map(c => {
+      const color = getColor(c.peerName);
+      const initials = getInitials(c.peerName);
+      const cached = getCachedMeta(c.peerName.toLowerCase());
+      const bg = cached?.avatar ? `background-image:url(${cached.avatar})` : `background:${color}`;
+      const inner = cached?.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+      const displayName = /^0x[0-9a-f]{40}$/.test(c.peerName) ? c.peerName.slice(0,6) + "..." + c.peerName.slice(-4) : c.peerName;
+      return `<div class="directory-item" onclick="directoryOpenDM('${escapeHtml(c.peerName).replace(/'/g,"\\'")}')">
+        <div class="directory-item-pfp" style="${bg}">${inner}</div>
+        <div class="directory-item-info">
+          <div class="directory-item-name">${escapeHtml(displayName)}</div>
+          <div class="directory-item-meta">${escapeHtml(c.lastMessage || "")} · ${timeAgo(c.lastTime)}</div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  // Section 2: All users
   const filtered = directoryData.filter(u => {
     if (!lower) return true;
     return (u.name || "").toLowerCase().includes(lower)
@@ -4048,35 +4432,44 @@ function renderDirectory(filter = "") {
       || (u.walletAddress || "").toLowerCase().includes(lower);
   });
 
-  if (filtered.length === 0) {
-    list.innerHTML = '<div class="directory-empty">No verified users found</div>';
-    return;
+  if (filtered.length > 0) {
+    html += '<div style="font-size:10px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;margin-top:4px;">Users</div>';
+    html += filtered.map(u => {
+      const color = getColor(u.name);
+      const initials = getInitials(u.name);
+      const bg = u.avatar ? `background-image:url(${u.avatar})` : `background:${color}`;
+      const inner = u.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+      let meta = [];
+      if (u.xUsername) meta.push("@" + escapeHtml(u.xUsername));
+      if (u.walletAddress) meta.push(`<a href="https://etherscan.io/address/${escapeHtml(u.walletAddress)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(u.walletAddress.slice(0,6))}...${escapeHtml(u.walletAddress.slice(-4))}</a>`);
+      const online = users.find(ou => ou.name.toLowerCase() === u.name.toLowerCase());
+      if (online) meta.push('<span style="color:var(--green)">online</span>');
+      else if (u.lastSeen) meta.push(timeAgo(u.lastSeen));
+      return `<div class="directory-item" onclick="directoryAction('${escapeHtml(u.name).replace(/'/g, "\\'")}', ${u.xUsername ? "'" + escapeHtml(u.xUsername).replace(/'/g, "\\'") + "'" : "null"})">
+        <div class="directory-item-pfp" style="${bg}">${inner}</div>
+        <div class="directory-item-info">
+          <div class="directory-item-name">${escapeHtml(u.name)}</div>
+          <div class="directory-item-meta">${meta.join(" · ")}</div>
+        </div>
+      </div>`;
+    }).join("");
   }
 
-  list.innerHTML = filtered.map(u => {
-    const color = getColor(u.name);
-    const initials = getInitials(u.name);
-    const bg = u.avatar ? `background-image:url(${u.avatar})` : `background:${color}`;
-    const inner = u.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
-    let meta = [];
-    if (u.xUsername) meta.push("@" + escapeHtml(u.xUsername));
-    if (u.walletAddress) meta.push(`<a href="https://etherscan.io/address/${escapeHtml(u.walletAddress)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(u.walletAddress.slice(0,6))}...${escapeHtml(u.walletAddress.slice(-4))}</a>`);
-    const online = users.find(ou => ou.name.toLowerCase() === u.name.toLowerCase());
-    if (online) meta.push('<span style="color:var(--green)">online</span>');
-    else if (u.lastSeen) meta.push(timeAgo(u.lastSeen));
-
-    return `<div class="directory-item" onclick="directoryAction('${escapeHtml(u.name).replace(/'/g, "\\'")}', ${u.xUsername ? "'" + escapeHtml(u.xUsername).replace(/'/g, "\\'") + "'" : "null"})">
-      <div class="directory-item-pfp" style="${bg}">${inner}</div>
-      <div class="directory-item-info">
-        <div class="directory-item-name">${escapeHtml(u.name)}</div>
-        <div class="directory-item-meta">${meta.join(" · ")}</div>
-      </div>
-    </div>`;
-  }).join("");
+  if (!html) {
+    list.innerHTML = '<div class="directory-empty">No users found. Try a name, @handle, 0x address, or .eth/.wei domain.</div>';
+  } else {
+    list.innerHTML = html;
+  }
 }
 
+window.directoryOpenDM = function(peerName) {
+  document.getElementById("directory-panel").classList.remove("active");
+  const cached = getCachedMeta(peerName.toLowerCase());
+  const online = users.find(u => u.name.toLowerCase() === peerName.toLowerCase());
+  openDM(online?.userId || null, peerName, online?.avatar || cached?.avatar || null);
+};
+
 window.directoryAction = function(name, xUsername) {
-  // Add to contacts if not already saved
   const contactKey = xUsername ? "@" + xUsername.toLowerCase() : name.toLowerCase();
   if (!myContacts.includes(contactKey)) {
     if (socket) socket.emit("add-contact", { contactName: contactKey });
@@ -4091,7 +4484,7 @@ $("#directory-btn").addEventListener("click", async () => {
     panel.classList.remove("active");
     return;
   }
-  await loadDirectory();
+  await Promise.all([loadDirectory(), loadDMConversations()]);
   renderDirectory();
   panel.classList.add("active");
   document.getElementById("directory-search").value = "";
@@ -4104,6 +4497,24 @@ $("#directory-close").addEventListener("click", () => {
 
 $("#directory-search").addEventListener("input", (e) => {
   renderDirectory(e.target.value);
+});
+$("#directory-search").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const val = e.target.value.trim();
+  if (!val) return;
+  // Resolve .eth/.wei or 0x and open DM
+  if (/^0x[0-9a-fA-F]{40}$/.test(val) || val.endsWith(".eth") || val.endsWith(".wei")) {
+    document.getElementById("directory-panel").classList.remove("active");
+    // Trigger the main search handler
+    $("#search-input").value = val;
+    $("#search-input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    e.target.value = "";
+  } else if (val.startsWith("@") && val.length > 1) {
+    document.getElementById("directory-panel").classList.remove("active");
+    $("#search-input").value = val;
+    $("#search-input").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    e.target.value = "";
+  }
 });
 
 // Notifications
@@ -4143,7 +4554,7 @@ $("#quick-post-btn").addEventListener("click", () => {
   input.value = "";
   input.style.height = "auto";
   pendingPostImage = null;
-  $("#quick-post-preview").style.display = "none";
+  $("#quick-post-preview").classList.remove("has-image");
   $("#quick-post-preview").innerHTML = "";
 });
 $("#quick-post-input").addEventListener("keydown", (e) => {
@@ -4160,17 +4571,19 @@ $("#quick-post-img-btn").addEventListener("click", () => {
 });
 $("#quick-post-file").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
-  const dataUrl = await resizeBanner(file); // reuse resizer (800px max)
-  pendingPostImage = dataUrl;
-  const preview = $("#quick-post-preview");
-  preview.style.display = "";
-  preview.innerHTML = `<img src="${dataUrl}" alt=""><button class="quick-post-preview-close" onclick="clearPostImage()">&times;</button>`;
-  e.target.value = ""; // reset file input
+  try {
+    const dataUrl = await resizeBanner(file);
+    pendingPostImage = dataUrl;
+    const preview = $("#quick-post-preview");
+    preview.classList.add("has-image");
+    preview.innerHTML = `<img src="${dataUrl}" alt=""><button class="quick-post-preview-close" onclick="clearPostImage()">&times;</button>`;
+  } catch (err) { showToast("Image failed to load", "error"); }
+  e.target.value = "";
 });
 
 window.clearPostImage = function() {
   pendingPostImage = null;
-  $("#quick-post-preview").style.display = "none";
+  $("#quick-post-preview").classList.remove("has-image");
   $("#quick-post-preview").innerHTML = "";
 };
 
@@ -4205,18 +4618,68 @@ $("#status-input").addEventListener("keydown", (e) => {
 
 // Search
 $("#search-input").addEventListener("input", (e) => renderContacts(e.target.value));
-$("#search-input").addEventListener("keydown", (e) => {
+$("#search-input").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const val = e.target.value.trim();
+  if (!val) return;
+
   if (val.startsWith("@") && val.length > 1) {
+    // X handle — add to contacts + open DM
     const handle = val.toLowerCase();
     if (!myContacts.includes(handle)) {
       socket.emit("add-contact", { contactName: handle });
       showToast(`Added ${val} to contacts`, "success");
-      e.target.value = "";
-      renderContacts("");
+    }
+    e.target.value = "";
+    // Find user by x handle
+    const xUser = users.find(u => u.xUsername && u.xUsername.toLowerCase() === handle.slice(1));
+    const cached = getCachedMeta(handle);
+    openDM(xUser?.userId || null, xUser?.name || cached?.name || handle, xUser?.avatar || cached?.avatar || null);
+    renderContacts("");
+
+  } else if (/^0x[0-9a-fA-F]{40}$/.test(val)) {
+    // Raw wallet address
+    e.target.value = "";
+    const addr = val.toLowerCase();
+    const knownUser = users.find(u => u.walletAddress && u.walletAddress.toLowerCase() === addr);
+    if (knownUser) {
+      openDM(knownUser.userId, knownUser.name, knownUser.avatar);
     } else {
-      showToast(`${val} is already in your contacts`, "info");
+      openDM(null, addr, null);
+      $("#dm-header-name").textContent = addr.slice(0, 6) + "..." + addr.slice(-4);
+      showToast(`Messaging wallet — they'll see this when they sign up`, "info", 4000);
+    }
+
+  } else if (val.endsWith(".eth") || val.endsWith(".wei")) {
+    // ENS or WEI domain — resolve to address then open DM
+    e.target.value = "";
+    showToast(`Resolving ${val}...`, "info", 2000);
+    try {
+      const rpc = new ethers.JsonRpcProvider("https://ethereum.publicnode.com", 1, { staticNetwork: true });
+      let addr = null;
+      if (val.endsWith(".eth")) {
+        addr = await Promise.race([rpc.resolveName(val), new Promise((_, r) => setTimeout(() => r("timeout"), 5000))]);
+      } else if (val.endsWith(".wei")) {
+        // WEI resolution via registry
+        const ns = new ethers.Contract('0x0000000000696760E15f265e828DB644A0c242EB',
+          ['function resolve(string) view returns (address)'], rpc);
+        addr = await Promise.race([ns.resolve(val), new Promise((_, r) => setTimeout(() => r("timeout"), 5000))]);
+      }
+      if (addr && addr !== ethers.ZeroAddress) {
+        addr = addr.toLowerCase();
+        const knownUser = users.find(u => u.walletAddress && u.walletAddress.toLowerCase() === addr);
+        if (knownUser) {
+          openDM(knownUser.userId, knownUser.name, knownUser.avatar);
+        } else {
+          openDM(null, addr, null);
+          $("#dm-header-name").textContent = val;
+          showToast(`Messaging ${val} — they'll see this when they connect their wallet`, "info", 4000);
+        }
+      } else {
+        showToast(`Could not resolve ${val}`, "error");
+      }
+    } catch (err) {
+      showToast(`Could not resolve ${val}`, "error");
     }
   }
 });
@@ -4265,6 +4728,19 @@ $("#dm-close").addEventListener("click", closeDM);
 $("#dm-send").addEventListener("click", sendDM);
 $("#dm-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendDM(); });
 $("#dm-overlay").addEventListener("click", (e) => { if (e.target === $("#dm-overlay")) closeDM(); });
+// DM image upload
+$("#dm-img-btn").addEventListener("click", () => { $("#dm-file-input").click(); });
+$("#dm-file-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const dataUrl = await resizeBanner(file);
+    pendingDMImage = dataUrl;
+    const preview = document.getElementById("dm-image-preview");
+    preview.classList.add("has-image");
+    preview.innerHTML = `<img src="${dataUrl}" alt=""><button class="dm-img-close" onclick="clearDMImage()">&times;</button>`;
+  } catch (err) { showToast("Image failed to load", "error"); }
+  e.target.value = "";
+});
 
 // In-call chat button — opens DM with current call partner
 $("#call-chat-btn").addEventListener("click", () => {
@@ -4324,6 +4800,7 @@ $("#sign-out-link").addEventListener("click", (e) => {
   localStorage.removeItem("om_walletAddress");
   localStorage.removeItem("om_last_name");
   localStorage.removeItem("om_avatar");
+  localStorage.removeItem("om_sessionToken");
   localStorage.removeItem("om_callTarget");
   localStorage.removeItem("om_contact_cache");
   // Disconnect wallet if connected
@@ -4331,7 +4808,7 @@ $("#sign-out-link").addEventListener("click", (e) => {
   // Disconnect socket
   if (socket) socket.disconnect();
   // Reset state
-  myUserId = null; myName = ""; myAvatar = null; myStats = null; myXUsername = null; myWalletAddress = null;
+  myUserId = null; myName = ""; myAvatar = null; myStats = null; myXUsername = null; myWalletAddress = null; myCustomStatus = null; myContacts = [];
   // Back to login
   showScreen("login-screen");
   showToast("Signed out", "success");
@@ -4459,15 +4936,25 @@ window.addEventListener("load", async () => {
       const res = await fetch(`/auth/resolve/${token}`);
       if (res.ok) {
         const profile = await res.json();
-        myName = profile.displayName;
         myXUsername = profile.username;
-        myAvatar = profile.avatar;
-
-        localStorage.setItem("om_last_name", myName);
         localStorage.setItem("om_xUsername", profile.username);
-        if (profile.avatar) storeAvatar(profile.avatar);
 
-        showToast(`Signed in as @${profile.username}`, "success");
+        // If already logged in (wallet or previous session), keep existing name — just link X
+        const existingName = localStorage.getItem("om_name");
+        const existingUserId = localStorage.getItem("om_userId");
+        if (existingName && existingUserId) {
+          myName = existingName;
+          if (profile.avatar && !myAvatar) { myAvatar = profile.avatar; storeAvatar(profile.avatar); }
+          showToast(`Linked @${profile.username}`, "success");
+        } else {
+          // Fresh X login — use X profile as identity
+          myName = profile.displayName;
+          myAvatar = profile.avatar;
+          localStorage.setItem("om_last_name", myName);
+          if (profile.avatar) storeAvatar(profile.avatar);
+          showToast(`Signed in as @${profile.username}`, "success");
+        }
+
         connectSocket();
         return;
       } else {
