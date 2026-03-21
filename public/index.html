@@ -210,6 +210,57 @@
       transition: all 0.2s; text-decoration: none;
     }
     .link-btn:hover { border-color: var(--red); color: var(--text); }
+    .visitor-count {
+      font-family: var(--font-mono); font-size: 10px; color: #555;
+    }
+    .directory-panel {
+      display: none; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; margin-bottom: 12px; overflow: hidden;
+      animation: slideUp 0.2s ease;
+    }
+    .directory-panel.active { display: block; }
+    .directory-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    .directory-search {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px; border-radius: 8px;
+      font-family: var(--font-mono); font-size: 12px; outline: none;
+    }
+    .directory-search:focus { border-color: rgba(232,69,60,0.4); }
+    .directory-close {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    .directory-close:hover { color: var(--text); }
+    .directory-list {
+      max-height: 240px; overflow-y: auto; padding: 6px;
+    }
+    .directory-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 8px; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .directory-item:hover { background: var(--surface-hover); }
+    .directory-item-pfp {
+      width: 28px; height: 28px; border-radius: 50%;
+      background-size: cover; background-position: center;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .directory-item-info { flex: 1; min-width: 0; }
+    .directory-item-name {
+      font-size: 13px; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .directory-item-meta {
+      font-size: 10px; color: var(--text-muted); font-family: var(--font-mono);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .directory-empty {
+      text-align: center; color: #555; padding: 20px; font-size: 12px;
+    }
     .my-custom-status {
       font-size: 11px; color: var(--text-muted); cursor: pointer;
       font-family: var(--font-mono); padding: 2px 0;
@@ -1299,7 +1350,21 @@
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
           Go Live
         </button>
+        <button class="invite-btn" id="directory-btn" title="User Directory">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Directory
+        </button>
+        <span class="visitor-count" id="visitor-count" title="Total visitors"></span>
       </div>
+    </div>
+
+    <!-- Directory dropdown -->
+    <div class="directory-panel" id="directory-panel">
+      <div class="directory-header">
+        <input type="text" class="directory-search" id="directory-search" placeholder="Search users..." />
+        <button class="directory-close" id="directory-close">&times;</button>
+      </div>
+      <div class="directory-list" id="directory-list"></div>
     </div>
 
     <!-- Call-link banner (shown when arriving via ?call=username) -->
@@ -1577,7 +1642,7 @@ async function resolveWalletDisplayName(address) {
   try {
     const rpc = new ethers.JsonRpcProvider(RPCS[0], 1, { staticNetwork: true });
     const ensName = await rpc.lookupAddress(address);
-    if (ensName) return ensName;
+    if (ensName) return ensName.toLowerCase();
   } catch (e) { console.warn('ENS resolve failed:', e); }
   // Step 3: truncated address
   return address.slice(0, 6) + '...' + address.slice(-4);
@@ -2096,7 +2161,7 @@ function chatDisplayName(msg) {
   let display = escapeHtml(msg.name);
   if (msg.xUsername) display += ` <span class="x-handle">@${escapeHtml(msg.xUsername)}</span>`;
   if (msg.walletAddress && !msg.name.includes("...") && !msg.name.endsWith(".wei") && !msg.name.endsWith(".eth")) {
-    display += ` <span class="wallet-handle">${msg.walletAddress.slice(0,6)}...${msg.walletAddress.slice(-4)}</span>`;
+    display += ` <span class="wallet-handle">${escapeHtml(msg.walletAddress.slice(0,6))}...${escapeHtml(msg.walletAddress.slice(-4))}</span>`;
   }
   return display;
 }
@@ -2206,8 +2271,9 @@ function openDM(userId, name, avatar) {
     pfp.innerHTML = `<span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#fff">${getInitials(name)}</span>`;
   }
   $("#dm-header-name").textContent = name;
-  // Render existing in-memory messages
-  const msgs = dmMessages.get(userId) || [];
+  // Render existing in-memory messages (keyed by userId or name for offline)
+  const dmKey = userId || name;
+  const msgs = dmMessages.get(dmKey) || [];
   const container = $("#dm-messages");
   container.innerHTML = msgs.length === 0 ? '<div class="dm-empty">Loading...</div>' : "";
   msgs.forEach(m => appendDMMsg(m, container));
@@ -2239,8 +2305,12 @@ function appendDMMsg(msg, container) {
 function sendDM() {
   const input = $("#dm-input");
   const text = input.value.trim();
-  if (!text || !socket || !dmTargetUserId) return;
-  socket.emit("chat-dm", { toUserId: dmTargetUserId, text });
+  if (!text || !socket || (!dmTargetUserId && !dmTargetName)) return;
+  if (dmTargetUserId) {
+    socket.emit("chat-dm", { toUserId: dmTargetUserId, text });
+  } else {
+    socket.emit("chat-dm", { toName: dmTargetName, text });
+  }
   input.value = "";
 }
 
@@ -2447,9 +2517,9 @@ function renderContactCard(user, i, isOffline) {
       </div>
       ${isOffline ? "" : `<button class="poke-btn" onclick="pokeUser('${user.userId}', event)" title="Poke">👋</button>`}
       <button class="save-btn ${saved ? "saved" : ""}" onclick="toggleSaveContact('${user.name.replace(/'/g, "\\'")}', ${user.xUsername ? "'" + user.xUsername.replace(/'/g, "\\'") + "'" : "null"}, event)" title="${saved ? "Remove from contacts" : "Save to contacts"}">${starSvg}</button>
-      ${isOffline ? "" : `<button class="poke-btn" onclick="openDM('${user.userId}','${user.name.replace(/'/g, "\\'")}', ${user.avatar ? "'" + user.avatar.replace(/'/g, "\\'") + "'" : "null"}); event.stopPropagation();" title="Message" style="color:#888">
+      <button class="poke-btn" onclick="openDM(${user.userId ? "'" + user.userId + "'" : "null"},'${user.name.replace(/'/g, "\\'")}', ${user.avatar ? "'" + user.avatar.replace(/'/g, "\\'") + "'" : "null"}); event.stopPropagation();" title="Message" style="color:${isOffline ? '#555' : '#888'}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      </button>`}
+      </button>
       ${isOffline ? "" : `<div class="call-btn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </div>`}
@@ -2758,7 +2828,7 @@ function connectSocket() {
 
     let nameHtml = escapeHtml(name);
     if (xUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(xUsername)}</span>`;
-    if (walletAddress) nameHtml += ` <span class="wallet-handle">${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}</span>`;
+    if (walletAddress) nameHtml += ` <span class="wallet-handle">${escapeHtml(walletAddress.slice(0,6))}...${escapeHtml(walletAddress.slice(-4))}</span>`;
     $("#my-name-display").innerHTML = nameHtml;
     updateMyPfp();
     updateMyStats();
@@ -2771,6 +2841,7 @@ function connectSocket() {
     socket.emit("get-contacts");
     socket.emit("chat-history");
     resetIdleTimer();
+    loadStats();
     showScreen("contacts-screen");
     if (reconnected) {
       showToast("Reconnected!", "success");
@@ -3005,11 +3076,12 @@ function connectSocket() {
   });
 
   socket.on("chat-dm-sent", (msg) => {
-    const peerId = msg.toUserId;
-    if (!dmMessages.has(peerId)) dmMessages.set(peerId, []);
+    const dmKey = msg.toUserId || msg.toName;
+    if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
     const entry = { text: msg.text, ts: msg.ts, sent: true };
-    dmMessages.get(peerId).push(entry);
-    if (dmTargetUserId === peerId) {
+    dmMessages.get(dmKey).push(entry);
+    const currentKey = dmTargetUserId || dmTargetName;
+    if (currentKey === dmKey || (msg.toName && dmTargetName && msg.toName.toLowerCase() === dmTargetName.toLowerCase())) {
       appendDMMsg(entry);
     }
     playSendSound();
@@ -3026,11 +3098,11 @@ function connectSocket() {
       }
       return;
     }
-    // Find the userId for this peer (may be online or offline)
+    // Find the key for this peer (userId if online, name if offline)
     const peer = users.find(u => u.name.toLowerCase() === peerName.toLowerCase());
-    const peerId = peer ? peer.userId : peerName;
+    const dmKey = dmTargetUserId || peerName;
     // Merge with in-memory: history first, then append any newer in-memory messages
-    const existing = dmMessages.get(dmTargetUserId) || [];
+    const existing = dmMessages.get(dmKey) || [];
     const historyIds = new Set(messages.map(m => m.id));
     const myNameLower = myName.toLowerCase().trim();
     const historyEntries = messages.map(m => ({
@@ -3039,7 +3111,7 @@ function connectSocket() {
     // Keep in-memory messages not in history (newer ones)
     const newer = existing.filter(e => !historyIds.has(e.id));
     const merged = [...historyEntries, ...newer];
-    if (dmTargetUserId) dmMessages.set(dmTargetUserId, merged);
+    dmMessages.set(dmKey, merged);
     // Re-render if DM panel is open for this peer
     if (dmTargetName && dmTargetName.toLowerCase() === peerName.toLowerCase()) {
       const container = $("#dm-messages");
@@ -3213,7 +3285,7 @@ $("#link-wallet-btn").addEventListener("click", () => {
       updateLinkButtons();
       let nameHtml = escapeHtml(myName);
       if (myXUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(myXUsername)}</span>`;
-      nameHtml += ` <span class="wallet-handle">${myWalletAddress.slice(0,6)}...${myWalletAddress.slice(-4)}</span>`;
+      nameHtml += ` <span class="wallet-handle">${escapeHtml(myWalletAddress.slice(0,6))}...${escapeHtml(myWalletAddress.slice(-4))}</span>`;
       $("#my-name-display").innerHTML = nameHtml;
     } catch (e) {
       console.error("Wallet linking failed:", e);
@@ -3228,6 +3300,104 @@ $("#link-wallet-btn").addEventListener("click", () => {
 // Link X (for wallet-authenticated users)
 $("#link-x-btn").addEventListener("click", () => {
   window.location.href = '/auth/x';
+});
+
+// Directory
+let directoryData = [];
+
+async function loadDirectory() {
+  try {
+    const res = await fetch("/api/directory");
+    if (res.ok) directoryData = await res.json();
+  } catch {}
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch("/api/stats");
+    if (res.ok) {
+      const stats = await res.json();
+      const el = document.getElementById("visitor-count");
+      if (el) el.textContent = `${stats.registeredUsers} users · ${stats.totalVisitors} visits`;
+    }
+  } catch {}
+}
+
+function renderDirectory(filter = "") {
+  const list = document.getElementById("directory-list");
+  const lower = filter.toLowerCase();
+  const filtered = directoryData.filter(u => {
+    if (!lower) return true;
+    return (u.name || "").toLowerCase().includes(lower)
+      || (u.xUsername || "").toLowerCase().includes(lower)
+      || (u.walletAddress || "").toLowerCase().includes(lower);
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="directory-empty">No verified users found</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(u => {
+    const color = getColor(u.name);
+    const initials = getInitials(u.name);
+    const bg = u.avatar ? `background-image:url(${u.avatar})` : `background:${color}`;
+    const inner = u.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+    let meta = [];
+    if (u.xUsername) meta.push("@" + escapeHtml(u.xUsername));
+    if (u.walletAddress) meta.push(escapeHtml(u.walletAddress.slice(0,6)) + "..." + escapeHtml(u.walletAddress.slice(-4)));
+    // Check if online
+    const online = users.find(ou => ou.name.toLowerCase() === u.name.toLowerCase());
+    if (online) meta.push('<span style="color:var(--green)">online</span>');
+
+    return `<div class="directory-item" onclick="directoryAction('${escapeHtml(u.name).replace(/'/g, "\\'")}', ${u.xUsername ? "'" + escapeHtml(u.xUsername).replace(/'/g, "\\'") + "'" : "null"})">
+      <div class="directory-item-pfp" style="${bg}">${inner}</div>
+      <div class="directory-item-info">
+        <div class="directory-item-name">${escapeHtml(u.name)}</div>
+        <div class="directory-item-meta">${meta.join(" · ")}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+window.directoryAction = function(name, xUsername) {
+  // Add to contacts if not already saved
+  const contactKey = xUsername ? "@" + xUsername.toLowerCase() : name.toLowerCase();
+  if (!myContacts.includes(contactKey)) {
+    if (socket) socket.emit("add-contact", { contactName: contactKey });
+    showToast(`Added ${name} to contacts`, "success");
+  }
+  // Close directory
+  document.getElementById("directory-panel").classList.remove("active");
+  // Check if online — if so, open DM; otherwise open offline DM
+  const online = users.find(u => u.name.toLowerCase() === name.toLowerCase());
+  if (online) {
+    openDM(online.userId, online.name, online.avatar);
+  } else {
+    const cached = getCachedMeta(name.toLowerCase());
+    openDM(null, name, cached?.avatar || null);
+  }
+};
+
+$("#directory-btn").addEventListener("click", async () => {
+  const panel = document.getElementById("directory-panel");
+  if (panel.classList.contains("active")) {
+    panel.classList.remove("active");
+    return;
+  }
+  await loadDirectory();
+  renderDirectory();
+  panel.classList.add("active");
+  document.getElementById("directory-search").value = "";
+  document.getElementById("directory-search").focus();
+});
+
+$("#directory-close").addEventListener("click", () => {
+  document.getElementById("directory-panel").classList.remove("active");
+});
+
+$("#directory-search").addEventListener("input", (e) => {
+  renderDirectory(e.target.value);
 });
 
 // Custom status

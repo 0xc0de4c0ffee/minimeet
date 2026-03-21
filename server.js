@@ -660,6 +660,24 @@ async function dbSetWallet(name, walletAddress) {
   jsonSet("wallet_addresses", key, walletAddress);
 }
 
+async function dbGetWalletOwner(walletAddress) {
+  const addr = walletAddress.toLowerCase();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("wallet_addresses").select("name").eq("wallet_address", addr).single();
+      if (data) return data.name;
+    } catch {}
+    return null;
+  }
+  // JSON fallback: scan all entries
+  if (!jsonStores["wallet_addresses"]) jsonGet("wallet_addresses", "_probe");
+  const store = jsonStores["wallet_addresses"] || {};
+  for (const [name, wa] of Object.entries(store)) {
+    if (wa === addr) return name;
+  }
+  return null;
+}
+
 // ─── Rate limiting ───────────────────────────────────────────────────────────
 
 const rateLimitBuckets = new Map(); // socketId -> { event -> { count, resetAt } }
@@ -685,6 +703,79 @@ setInterval(() => {
     if (!activeSockets.has(sid)) rateLimitBuckets.delete(sid);
   }
 }, 60_000);
+
+// ─── Visitor & user counters ─────────────────────────────────────────────────
+
+let totalVisitors = 0;
+
+async function dbGetCounter(key) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("counters").select("value").eq("key", key).single();
+      if (data) return data.value;
+    } catch {}
+    return 0;
+  }
+  const stored = jsonGet("counters", key);
+  return stored ? parseInt(stored, 10) : 0;
+}
+
+async function dbIncrCounter(key) {
+  if (supabase) {
+    try {
+      await supabase.rpc("increment_counter", { counter_key: key });
+    } catch {
+      // Fallback: read-increment-write
+      try {
+        const val = await dbGetCounter(key);
+        await supabase.from("counters").upsert({ key, value: val + 1 });
+      } catch (e) { console.warn("Counter increment error:", e.message); }
+    }
+    return;
+  }
+  const val = await dbGetCounter(key);
+  jsonSet("counters", key, String(val + 1));
+}
+
+// ─── User directory (verified users) ────────────────────────────────────────
+
+async function dbAddToDirectory(name, profile) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      await supabase.from("user_directory").upsert({
+        name: key,
+        display_name: profile.displayName || name,
+        x_username: profile.xUsername || null,
+        wallet_address: profile.walletAddress || null,
+        avatar: profile.avatar || null,
+        last_seen: new Date().toISOString(),
+      });
+    } catch (e) { console.warn("Directory write error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("user_directory", "_all");
+  let dir; try { dir = stored ? JSON.parse(stored) : {}; } catch { dir = {}; }
+  dir[key] = { displayName: profile.displayName || name, xUsername: profile.xUsername || null, walletAddress: profile.walletAddress || null, avatar: profile.avatar || null, lastSeen: Date.now() };
+  jsonSet("user_directory", "_all", JSON.stringify(dir));
+}
+
+async function dbGetDirectory() {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("user_directory").select("*").order("last_seen", { ascending: false }).limit(500);
+      if (data) return data.map(d => ({
+        name: d.display_name, xUsername: d.x_username || null,
+        walletAddress: d.wallet_address || null, avatar: d.avatar || null,
+        lastSeen: new Date(d.last_seen).getTime(),
+      }));
+    } catch (e) { console.warn("Directory read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("user_directory", "_all");
+  let dir; try { dir = stored ? JSON.parse(stored) : {}; } catch { dir = {}; }
+  return Object.values(dir).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+}
 
 const MAX_NAME_LENGTH = 30;
 const MAX_AVATAR_BYTES = 200_000; // ~200KB for a 128x128 JPEG
@@ -834,6 +925,9 @@ async function refreshUserStats(userId) {
 // ─── Socket.IO Events ──────────────────────────────────────────────────────
 
 io.on("connection", (socket) => {
+  // Count every socket connection as a visit
+  totalVisitors++;
+  dbIncrCounter("total_visitors");
 
   socket.on("register", async ({ name, reconnectUserId, avatar, xUsername, walletAddress, walletSignature, walletNonce, sessionToken }) => {
     if (!name || typeof name !== "string") return;
@@ -860,7 +954,8 @@ io.on("connection", (socket) => {
       if (disconnectTimers.has(reconnectUserId)) { clearTimeout(disconnectTimers.get(reconnectUserId)); disconnectTimers.delete(reconnectUserId); }
       eu.socketId = socket.id; eu.disconnectedAt = null; eu.status = "online"; eu.connectedAt = Date.now();
       if (safeAvatar) { eu.avatar = safeAvatar; await dbSetAvatar(eu.name, safeAvatar); }
-      if (safeWallet && !eu.walletAddress) { eu.walletAddress = safeWallet; await dbSetWallet(eu.name, safeWallet); }
+      // On reconnect, only accept wallet if it matches what's already stored (no unsigned updates)
+      if (safeWallet && eu.walletAddress && safeWallet !== eu.walletAddress) safeWallet = null;
       socket.userId = reconnectUserId;
       const resolvedAvatar = eu.avatar || await dbGetAvatar(eu.name);
       eu.avatar = resolvedAvatar;
@@ -878,11 +973,17 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Wallet-authenticated: verify wallet owns the name
+    // Wallet-authenticated: verify wallet ownership
     if (safeWallet) {
       const existingWallet = await dbGetWallet(trimmedName);
       if (existingWallet && existingWallet !== safeWallet) {
         socket.emit("register-error", { message: `"${trimmedName}" is claimed by a different wallet.` });
+        return;
+      }
+      // Reverse check: ensure this wallet isn't already used by a different user
+      const existingOwner = await dbGetWalletOwner(safeWallet);
+      if (existingOwner && existingOwner !== trimmedName.toLowerCase().trim()) {
+        socket.emit("register-error", { message: "This wallet is already linked to another account." });
         return;
       }
     }
@@ -928,6 +1029,11 @@ io.on("connection", (socket) => {
     socket.emit("registered", { userId, name: trimmedName, reconnected: false, avatar: resolvedAvatar, stats, xUsername: xUsername || null, walletAddress: storedWallet || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours, sessionToken: newSessionToken });
     broadcastUserList();
     console.log(`✅ ${trimmedName}${xUsername ? " (@" + xUsername + ")" : ""}${storedWallet ? " [" + storedWallet.slice(0,6) + "...]" : ""} registered as ${userId}`);
+
+    // Add verified users (X or wallet) to the directory
+    if (xUsername || storedWallet) {
+      dbAddToDirectory(trimmedName, { displayName: trimmedName, xUsername: xUsername || null, walletAddress: storedWallet || null, avatar: resolvedAvatar });
+    }
   });
 
   socket.on("update-avatar", async ({ avatar }) => {
@@ -961,6 +1067,12 @@ io.on("connection", (socket) => {
     // Verify signature
     if (!walletSignature || !walletNonce || !verifyWalletSignature(safeWallet, walletSignature, walletNonce)) {
       socket.emit("wallet-link-error", { message: "Wallet signature verification failed" });
+      return;
+    }
+    // Check wallet isn't already used by another user
+    const existingOwner = await dbGetWalletOwner(safeWallet);
+    if (existingOwner && existingOwner !== userData.name.toLowerCase().trim()) {
+      socket.emit("wallet-link-error", { message: "This wallet is already linked to another account." });
       return;
     }
     userData.walletAddress = safeWallet;
@@ -1167,23 +1279,44 @@ io.on("connection", (socket) => {
   });
 
   // P2P direct messages (persisted)
-  socket.on("chat-dm", ({ toUserId, text }) => {
+  socket.on("chat-dm", ({ toUserId, toName, text }) => {
     if (!rateLimit(socket, "chat", 10, 10_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
-    const target = onlineUsers.get(toUserId); if (!target) return;
     const trimmed = (text || "").trim().slice(0, 500);
     if (!trimmed) return;
-    const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, ts: Date.now() };
-    // Deliver if online
-    if (!target.disconnectedAt) {
-      const ts = getSocketByUserId(toUserId);
-      if (ts) ts.emit("chat-dm", msg);
+
+    let targetName = null;
+    let targetUserId = toUserId || null;
+
+    if (toUserId && onlineUsers.has(toUserId)) {
+      // Online target by userId
+      const target = onlineUsers.get(toUserId);
+      targetName = target.name;
+      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+      if (!target.disconnectedAt) {
+        const ts = getSocketByUserId(toUserId);
+        if (ts) ts.emit("chat-dm", msg);
+      }
+      socket.emit("chat-dm-sent", { toUserId, toName: targetName, ...msg });
+      dbSaveDM(userData.name, targetName, msg);
+    } else if (toName && typeof toName === "string") {
+      // Offline target by name — persist for when they come online
+      targetName = toName.trim().slice(0, 60);
+      const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+      // Check if they happen to be online under a different lookup
+      const onlineTarget = [...onlineUsers.entries()].find(([, d]) => d.name.toLowerCase() === targetName.toLowerCase());
+      if (onlineTarget) {
+        const [tId, tData] = onlineTarget;
+        if (!tData.disconnectedAt) {
+          const ts = getSocketByUserId(tId);
+          if (ts) ts.emit("chat-dm", msg);
+        }
+        targetUserId = tId;
+      }
+      socket.emit("chat-dm-sent", { toUserId: targetUserId, toName: targetName, ...msg });
+      dbSaveDM(userData.name, targetName, msg);
     }
-    // Echo back to sender
-    socket.emit("chat-dm-sent", { toUserId, toName: target.name, ...msg });
-    // Persist
-    dbSaveDM(userData.name, target.name, msg);
   });
 
   // DM history
@@ -1316,6 +1449,19 @@ io.on("connection", (socket) => {
   });
 });
 
+// ─── Directory & stats API ────────────────────────────────────────────────────
+
+app.get("/api/directory", async (req, res) => {
+  const dir = await dbGetDirectory();
+  res.json(dir);
+});
+
+app.get("/api/stats", async (req, res) => {
+  const visitors = await dbGetCounter("total_visitors");
+  const dirSize = (await dbGetDirectory()).length;
+  res.json({ totalVisitors: visitors + totalVisitors, onlineUsers: onlineUsers.size, registeredUsers: dirSize });
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // ─── Auto-Meet: periodic matcher ───────────────────────────────────────────
@@ -1395,6 +1541,7 @@ setInterval(async () => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, async () => {
   // Load persisted public chat into memory
+  totalVisitors = await dbGetCounter("total_visitors");
   const savedMsgs = await dbLoadPublicMsgs(MAX_CHAT_HISTORY);
   // Load reactions for all saved messages
   if (savedMsgs.length > 0) {
