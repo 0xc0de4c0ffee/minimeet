@@ -1,0 +1,16 @@
+{
+  "name": "oneminute-signaling-server",
+  "version": "1.0.0",
+  "description": "Signaling server for OneMinute 60-second video calling app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "uuid": "^9.0.0"
+  }
+}
