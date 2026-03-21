@@ -261,6 +261,165 @@
     .directory-empty {
       text-align: center; color: #555; padding: 20px; font-size: 12px;
     }
+
+    /* ── Profile Screen ──────────────────────────── */
+    #profile-screen {
+      flex-direction: column; overflow-y: auto;
+    }
+    .profile-banner {
+      width: 100%; height: 160px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      background-size: cover; background-position: center; flex-shrink: 0;
+      position: relative;
+    }
+    .profile-back {
+      position: absolute; top: 12px; left: 12px;
+      background: rgba(0,0,0,0.5); border: none; color: #fff;
+      width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .profile-back:hover { background: rgba(0,0,0,0.7); }
+    .profile-header {
+      padding: 0 20px; margin-top: -32px; position: relative;
+    }
+    .profile-avatar {
+      width: 64px; height: 64px; border-radius: 50%;
+      border: 3px solid var(--bg); background-size: cover; background-position: center;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-name {
+      font-size: 20px; font-weight: 700; margin-top: 8px;
+    }
+    .profile-handle {
+      font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;
+    }
+    .profile-bio {
+      font-size: 13px; color: #bbb; line-height: 1.5; margin-top: 8px;
+      word-break: break-word;
+    }
+    .profile-bio a { color: var(--red); text-decoration: none; }
+    .profile-bio a:hover { text-decoration: underline; }
+    .profile-stats-row {
+      display: flex; gap: 16px; margin-top: 10px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    }
+    .profile-stats-row span { color: var(--text); font-weight: 700; }
+    .profile-actions {
+      display: flex; gap: 8px; margin-top: 10px;
+    }
+    .profile-action-btn {
+      padding: 6px 14px; border: 1px solid var(--border); background: none;
+      color: var(--text); font-size: 12px; font-family: var(--font-body);
+      border-radius: 8px; cursor: pointer; transition: all 0.15s;
+    }
+    .profile-action-btn:hover { background: var(--surface-hover); }
+    .profile-action-btn.primary { background: var(--red); border-color: var(--red); }
+    .profile-action-btn.primary:hover { opacity: 0.9; }
+    .profile-posts { padding: 0 20px 20px; }
+    .profile-posts-title {
+      font-size: 14px; font-weight: 600; padding: 12px 0 8px;
+      font-family: var(--font-mono); text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text-muted);
+    }
+    .post {
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .post-header {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .post-pfp {
+      width: 28px; height: 28px; border-radius: 50%;
+      background-size: cover; background-position: center;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .post-author { font-size: 13px; font-weight: 600; }
+    .post-time { font-size: 11px; color: #555; }
+    .post-text {
+      font-size: 14px; color: #ccc; line-height: 1.5;
+      word-break: break-word; margin-bottom: 8px;
+    }
+    .post-text a { color: var(--red); text-decoration: none; }
+    .post-text a:hover { text-decoration: underline; }
+    .post-actions {
+      display: flex; gap: 20px; font-size: 12px; color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .post-action {
+      display: flex; align-items: center; gap: 4px; cursor: pointer;
+      transition: color 0.15s; background: none; border: none;
+      color: var(--text-muted); font-family: var(--font-mono); font-size: 12px;
+    }
+    .post-action:hover { color: var(--text); }
+    .post-action.liked { color: var(--red); }
+    .post-action.liked svg { fill: var(--red); }
+    .post-compose {
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+      display: flex; gap: 8px;
+    }
+    .post-compose-input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 8px 12px; border-radius: 8px;
+      font-size: 13px; font-family: var(--font-body); outline: none;
+      resize: none; min-height: 36px; max-height: 120px;
+    }
+    .post-compose-input:focus { border-color: rgba(232,69,60,0.4); }
+    .post-compose-btn {
+      padding: 8px 16px; background: var(--red); border: none;
+      color: #fff; font-size: 13px; border-radius: 8px; cursor: pointer;
+      font-family: var(--font-body); font-weight: 600;
+      align-self: flex-end;
+    }
+    .post-compose-btn:hover { opacity: 0.9; }
+    .post-reply-indicator {
+      font-size: 11px; color: var(--text-muted); margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .post-empty {
+      text-align: center; color: #555; padding: 30px; font-size: 13px;
+    }
+    /* Bio edit */
+    .bio-edit-area {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 8px; font-size: 13px; font-family: var(--font-body);
+      outline: none; resize: vertical; min-height: 50px; max-height: 100px;
+      border-radius: 8px; margin-top: 6px;
+    }
+    .bio-edit-area:focus { border-color: rgba(232,69,60,0.4); }
+    /* Notification bell */
+    .notif-btn {
+      position: relative; background: none; border: none;
+      color: var(--text-muted); cursor: pointer; padding: 4px;
+      transition: color 0.15s;
+    }
+    .notif-btn:hover { color: var(--text); }
+    .notif-badge {
+      position: absolute; top: -2px; right: -4px;
+      background: var(--red); color: #fff; font-size: 9px;
+      font-weight: 700; min-width: 14px; height: 14px;
+      border-radius: 7px; display: none; align-items: center;
+      justify-content: center; font-family: var(--font-mono);
+      padding: 0 3px;
+    }
+    .notif-badge.active { display: flex; }
+    .notif-panel {
+      display: none; position: absolute; top: 100%; right: 0;
+      background: #1a1a2e; border: 1px solid var(--border);
+      border-radius: 10px; width: 300px; max-height: 350px;
+      overflow-y: auto; z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .notif-panel.active { display: block; }
+    .notif-item {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-size: 12px; cursor: pointer; transition: background 0.15s;
+    }
+    .notif-item:hover { background: var(--surface); }
+    .notif-item.unread { border-left: 2px solid var(--red); }
+    .notif-item-text { color: #bbb; line-height: 1.4; }
+    .notif-item-text strong { color: var(--text); }
+    .notif-item-time { font-size: 10px; color: #555; margin-top: 3px; font-family: var(--font-mono); }
     .my-custom-status {
       font-size: 11px; color: var(--text-muted); cursor: pointer;
       font-family: var(--font-mono); padding: 2px 0;
@@ -1330,6 +1489,13 @@
             <div class="my-custom-status" id="my-custom-status" title="Click to set status"></div>
           </div>
         </div>
+        <div style="position:relative;display:inline-flex;">
+          <button class="notif-btn" id="notif-btn" title="Notifications">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+            <span class="notif-badge" id="notif-badge">0</span>
+          </button>
+          <div class="notif-panel" id="notif-panel"></div>
+        </div>
         <div class="online-count">
           <div class="online-dot"></div>
           <span id="online-count-num">0</span> online
@@ -1422,6 +1588,28 @@
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ PROFILE SCREEN ══════════════ -->
+  <div id="profile-screen" class="screen">
+    <div class="profile-banner" id="profile-banner">
+      <button class="profile-back" id="profile-back" onclick="showScreen('contacts-screen')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+      </button>
+    </div>
+    <div class="profile-header">
+      <div class="profile-avatar pfp-circle" id="profile-avatar"></div>
+      <div class="profile-name" id="profile-name"></div>
+      <div class="profile-handle" id="profile-handle"></div>
+      <div class="profile-bio" id="profile-bio"></div>
+      <div class="profile-stats-row" id="profile-stats-row"></div>
+      <div class="profile-actions" id="profile-actions"></div>
+    </div>
+    <div class="profile-posts">
+      <div class="profile-posts-title">Posts</div>
+      <div id="profile-compose"></div>
+      <div id="profile-posts-list"></div>
     </div>
   </div>
 
@@ -1679,7 +1867,10 @@ let ringInterval = null;
 
 function playRingtone() {
   stopRingtone();
-  try { audioCtx = new AudioCtx(); } catch { return; }
+  try {
+    audioCtx = new AudioCtx();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+  } catch { return; }
   const freqs = [523.25, 659.25, 783.99];
   let step = 0;
   function playNote() {
@@ -1706,6 +1897,7 @@ function stopRingtone() {
 function playNotifSound() {
   try {
     const ctx = new AudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine"; osc.frequency.value = 880;
@@ -1720,6 +1912,7 @@ function playNotifSound() {
 function playDMSound() {
   try {
     const ctx = new AudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
     // Two-tone pop: short high then low
     const o1 = ctx.createOscillator(), g1 = ctx.createGain();
     o1.type = "sine"; o1.frequency.value = 1200;
@@ -1740,6 +1933,7 @@ function playDMSound() {
 function playSendSound() {
   try {
     const ctx = new AudioCtx();
+    if (ctx.state === "suspended") ctx.resume();
     const osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.type = "sine"; osc.frequency.value = 600;
     gain.gain.setValueAtTime(0.05, ctx.currentTime);
@@ -1870,6 +2064,18 @@ function formatOnlineTime(ms) {
   const mins = Math.floor((ms % 3_600_000) / 60_000);
   if (hours > 0) return `${hours}h ${mins}m`;
   return `${mins}m`;
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }
 
 function updateMyStats() {
@@ -2161,7 +2367,7 @@ function chatDisplayName(msg) {
   let display = escapeHtml(msg.name);
   if (msg.xUsername) display += ` <span class="x-handle">@${escapeHtml(msg.xUsername)}</span>`;
   if (msg.walletAddress && !msg.name.includes("...") && !msg.name.endsWith(".wei") && !msg.name.endsWith(".eth")) {
-    display += ` <span class="wallet-handle">${escapeHtml(msg.walletAddress.slice(0,6))}...${escapeHtml(msg.walletAddress.slice(-4))}</span>`;
+    display += ` <a class="wallet-handle" href="https://etherscan.io/address/${escapeHtml(msg.walletAddress)}" target="_blank" rel="noopener" style="text-decoration:none;color:#888;">${escapeHtml(msg.walletAddress.slice(0,6))}...${escapeHtml(msg.walletAddress.slice(-4))}</a>`;
   }
   return display;
 }
@@ -2437,6 +2643,7 @@ function cacheUserMeta(user) {
       xUsername: user.xUsername || null,
       walletAddress: user.walletAddress || null,
       stats: user.stats || null,
+      lastSeen: Date.now(),
     };
     const cache = JSON.parse(localStorage.getItem("om_contact_cache") || "{}");
     cache[key] = meta;
@@ -2495,7 +2702,8 @@ function renderContactCard(user, i, isOffline) {
   } else if (meetsCount > 0) {
     statsLine = `${contactIdle ? "Away · " : ""}${meetsCount} meet${meetsCount !== 1 ? "s" : ""}${user.stats.totalOnlineMs > 60_000 ? " · " + formatOnlineTime(user.stats.totalOnlineMs) + " online" : ""}`;
   } else {
-    statsLine = isOffline ? "Offline" : contactIdle ? "Away" : "New here";
+    const lastSeenText = (isOffline && user.lastSeen) ? " · " + timeAgo(user.lastSeen) : "";
+    statsLine = isOffline ? "Offline" + lastSeenText : contactIdle ? "Away" : "New here";
   }
   const saved = isSaved(user.name, user.xUsername);
   const starSvg = saved
@@ -2512,7 +2720,7 @@ function renderContactCard(user, i, isOffline) {
         <div class="status-dot" style="background:${dotColor}"></div>
       </div>
       <div class="contact-info">
-        <span class="contact-name">${escapeHtml(user.name)} ${badge}</span>
+        <span class="contact-name"><span style="cursor:pointer" onclick="showProfile('${escapeHtml(user.name).replace(/'/g,"\\'")}');event.stopPropagation();">${escapeHtml(user.name)}</span> ${badge}</span>
         <span class="contact-status">${handle}${handle && statsLine ? " · " : ""}${statsLine}</span>
       </div>
       ${isOffline ? "" : `<button class="poke-btn" onclick="pokeUser('${user.userId}', event)" title="Poke">👋</button>`}
@@ -2620,6 +2828,7 @@ function renderContacts(filter = "") {
       stats: cached?.stats || null,
       xUsername: cached?.xUsername || (isXHandle ? contactName.slice(1) : null),
       walletAddress: cached?.walletAddress || null,
+      lastSeen: cached?.lastSeen || null,
       userId: null,
     };
   });
@@ -2759,6 +2968,7 @@ async function callUser(userId, name, avatar) {
   $("#call-link-banner").classList.remove("active");
   setupCallUI(name, avatar, "Calling...");
   showScreen("call-screen");
+  playRingtone();
   await startCamera();
   socket.emit("call-user", { calleeId: userId });
 }
@@ -2807,12 +3017,13 @@ function connectSocket() {
     }
   });
 
-  socket.on("registered", ({ userId, name, reconnected, avatar: serverAvatar, stats, xUsername, walletAddress, autoMeet, cooldownHours, sessionToken }) => {
+  socket.on("registered", ({ userId, name, reconnected, avatar: serverAvatar, stats, xUsername, walletAddress, customStatus, autoMeet, cooldownHours, sessionToken }) => {
     myUserId = userId;
     myName = name;
     myStats = stats || null;
     myXUsername = xUsername || null;
     myWalletAddress = walletAddress || null;
+    myCustomStatus = customStatus || null;
     myWalletSignature = null; myWalletNonce = null; // single-use
     localStorage.setItem("om_userId", userId);
     localStorage.setItem("om_name", name);
@@ -2828,11 +3039,12 @@ function connectSocket() {
 
     let nameHtml = escapeHtml(name);
     if (xUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(xUsername)}</span>`;
-    if (walletAddress) nameHtml += ` <span class="wallet-handle">${escapeHtml(walletAddress.slice(0,6))}...${escapeHtml(walletAddress.slice(-4))}</span>`;
+    if (walletAddress) nameHtml += ` <a class="wallet-handle" href="https://etherscan.io/address/${escapeHtml(walletAddress)}" target="_blank" rel="noopener" style="text-decoration:none;color:#888;">${escapeHtml(walletAddress.slice(0,6))}...${escapeHtml(walletAddress.slice(-4))}</a>`;
     $("#my-name-display").innerHTML = nameHtml;
     updateMyPfp();
     updateMyStats();
     updateLinkButtons();
+    updateCustomStatusDisplay();
     // Restore auto-meet state
     autoMeetEnabled = !!autoMeet;
     autoMeetCooldownHours = cooldownHours || 24;
@@ -2842,6 +3054,7 @@ function connectSocket() {
     socket.emit("chat-history");
     resetIdleTimer();
     loadStats();
+    if (socket) socket.emit("get-notifications");
     showScreen("contacts-screen");
     if (reconnected) {
       showToast("Reconnected!", "success");
@@ -2913,6 +3126,7 @@ function connectSocket() {
 
   socket.on("call-accepted", async ({ callId }) => {
     currentCallId = callId;
+    stopRingtone();
     $("#call-status-label").textContent = "Connected";
     startTimer();
     if (isCaller) await createAndSendOffer();
@@ -3058,7 +3272,7 @@ function connectSocket() {
   socket.on("chat-dm", (msg) => {
     const peerId = msg.fromUserId;
     if (!dmMessages.has(peerId)) dmMessages.set(peerId, []);
-    const entry = { text: msg.text, ts: msg.ts, sent: false };
+    const entry = { id: msg.id, text: msg.text, ts: msg.ts, sent: false };
     dmMessages.get(peerId).push(entry);
     // If DM panel is open for this person, render it
     if (dmTargetUserId === peerId) {
@@ -3078,7 +3292,7 @@ function connectSocket() {
   socket.on("chat-dm-sent", (msg) => {
     const dmKey = msg.toUserId || msg.toName;
     if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
-    const entry = { text: msg.text, ts: msg.ts, sent: true };
+    const entry = { id: msg.id, text: msg.text, ts: msg.ts, sent: true };
     dmMessages.get(dmKey).push(entry);
     const currentKey = dmTargetUserId || dmTargetName;
     if (currentKey === dmKey || (msg.toName && dmTargetName && msg.toName.toLowerCase() === dmTargetName.toLowerCase())) {
@@ -3101,15 +3315,16 @@ function connectSocket() {
     // Find the key for this peer (userId if online, name if offline)
     const peer = users.find(u => u.name.toLowerCase() === peerName.toLowerCase());
     const dmKey = dmTargetUserId || peerName;
-    // Merge with in-memory: history first, then append any newer in-memory messages
+    // Merge: use history as base, only keep in-memory messages newer than latest history entry
     const existing = dmMessages.get(dmKey) || [];
     const historyIds = new Set(messages.map(m => m.id));
     const myNameLower = myName.toLowerCase().trim();
     const historyEntries = messages.map(m => ({
-      text: m.text, ts: m.ts, sent: m.sender === myNameLower,
+      id: m.id, text: m.text, ts: m.ts, sent: m.sender === myNameLower,
     }));
-    // Keep in-memory messages not in history (newer ones)
-    const newer = existing.filter(e => !historyIds.has(e.id));
+    const latestHistoryTs = messages.length > 0 ? Math.max(...messages.map(m => m.ts)) : 0;
+    // Only keep in-memory entries that have an id not in history AND are newer
+    const newer = existing.filter(e => e.id && !historyIds.has(e.id) && e.ts > latestHistoryTs);
     const merged = [...historyEntries, ...newer];
     dmMessages.set(dmKey, merged);
     // Re-render if DM panel is open for this peer
@@ -3120,6 +3335,77 @@ function connectSocket() {
       if (merged.length === 0) container.innerHTML = '<div class="dm-empty">Send a message...</div>';
       container.scrollTop = container.scrollHeight;
     }
+  });
+
+  // ── Profile & Posts ─────────────────────────────────────────────────────
+  socket.on("profile", (data) => { handleProfileData(data); });
+
+  socket.on("user-posts", ({ username, posts, total }) => {
+    const list = document.getElementById("profile-posts-list");
+    if (!list) return;
+    if (posts.length === 0) {
+      list.innerHTML = '<div class="post-empty">No posts yet</div>';
+      return;
+    }
+    list.innerHTML = posts.map(p => renderPost(p)).join("");
+  });
+
+  socket.on("post-created", (post) => {
+    showToast("Posted!", "success");
+    // Refresh profile if viewing own
+    if (profileTarget && profileIsOwn) {
+      socket.emit("get-user-posts", { username: profileTarget, limit: 20, offset: 0 });
+    }
+  });
+
+  socket.on("post-deleted", ({ postId }) => {
+    const el = document.querySelector(`.post[data-post-id="${postId}"]`);
+    if (el) el.remove();
+    showToast("Post deleted", "success");
+  });
+
+  socket.on("post-liked", ({ postId, likeCount, liked, likers }) => {
+    // Update the like button in DOM
+    const postEl = document.querySelector(`.post[data-post-id="${postId}"]`);
+    if (postEl) {
+      const likeBtn = postEl.querySelector(".post-action");
+      if (likeBtn) {
+        likeBtn.className = `post-action${liked ? " liked" : ""}`;
+        likeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${liked ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg> ${likeCount}`;
+      }
+    }
+  });
+
+  socket.on("post-error", ({ message }) => { showToast(message, "error"); });
+
+  socket.on("thread", ({ postId, posts }) => {
+    const list = document.getElementById("profile-posts-list");
+    if (!list) return;
+    let html = posts.map(p => renderPost(p, true)).join("");
+    // Add reply compose
+    html += `<div class="post-compose" style="margin-top:8px;">
+      <textarea class="post-compose-input" id="reply-input-${postId}" placeholder="Reply..." maxlength="500"></textarea>
+      <button class="post-compose-btn" onclick="submitPost('${postId}')">Reply</button>
+    </div>`;
+    list.innerHTML = html;
+  });
+
+  socket.on("profile-updated", () => {
+    showToast("Profile updated", "success");
+  });
+
+  // ── Notifications ─────────────────────────────────────────────────────
+  socket.on("notifications", ({ notifications, unreadCount }) => {
+    updateNotifBadge(unreadCount);
+    renderNotifications(notifications);
+  });
+
+  socket.on("new-notification", (notif) => {
+    notifUnread++;
+    updateNotifBadge(notifUnread);
+    playNotifSound();
+    if (notif.type === "like") showToast(`${notif.fromUser} liked your post`, "info", 2000);
+    else if (notif.type === "reply") showToast(`${notif.fromUser} replied to your post`, "info", 2000);
   });
 
   socket.on("poke", ({ fromUserId, fromName, fromAvatar }) => {
@@ -3285,7 +3571,7 @@ $("#link-wallet-btn").addEventListener("click", () => {
       updateLinkButtons();
       let nameHtml = escapeHtml(myName);
       if (myXUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(myXUsername)}</span>`;
-      nameHtml += ` <span class="wallet-handle">${escapeHtml(myWalletAddress.slice(0,6))}...${escapeHtml(myWalletAddress.slice(-4))}</span>`;
+      nameHtml += ` <a class="wallet-handle" href="https://etherscan.io/address/${escapeHtml(myWalletAddress)}" target="_blank" rel="noopener" style="text-decoration:none;color:#888;">${escapeHtml(myWalletAddress.slice(0,6))}...${escapeHtml(myWalletAddress.slice(-4))}</a>`;
       $("#my-name-display").innerHTML = nameHtml;
     } catch (e) {
       console.error("Wallet linking failed:", e);
@@ -3301,6 +3587,240 @@ $("#link-wallet-btn").addEventListener("click", () => {
 $("#link-x-btn").addEventListener("click", () => {
   window.location.href = '/auth/x';
 });
+
+// ── Linkify (for bio + post text) ────────────────────────────────────────
+
+function linkify(text) {
+  const escaped = escapeHtml(text);
+  return escaped.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+    const display = url.length > 40 ? url.slice(0, 37) + "..." : url;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${display}</a>`;
+  });
+}
+
+// ── Profile Screen ──────────────────────────────────────────────────────
+
+let profileTarget = null; // username being viewed
+let profileIsOwn = false;
+
+function showProfile(username) {
+  profileTarget = username;
+  profileIsOwn = (myName && username.toLowerCase() === myName.toLowerCase());
+  showScreen("profile-screen");
+  // Clear while loading
+  $("#profile-name").textContent = username;
+  $("#profile-handle").textContent = "";
+  $("#profile-bio").innerHTML = "";
+  $("#profile-stats-row").innerHTML = "";
+  $("#profile-actions").innerHTML = "";
+  $("#profile-posts-list").innerHTML = '<div class="post-empty">Loading...</div>';
+  $("#profile-compose").innerHTML = "";
+  $("#profile-banner").style.backgroundImage = "";
+  const avatarEl = $("#profile-avatar");
+  const c = getColor(username);
+  avatarEl.style.background = c;
+  avatarEl.innerHTML = `<span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#fff">${getInitials(username)}</span>`;
+
+  if (socket) {
+    socket.emit("get-profile", { username });
+    socket.emit("get-user-posts", { username, limit: 20, offset: 0 });
+  }
+}
+
+// Profile data received
+function handleProfileData(data) {
+  if (data.avatar) {
+    const el = $("#profile-avatar");
+    el.style.background = `url(${data.avatar}) center/cover`;
+    el.innerHTML = "";
+  }
+  if (data.banner) {
+    $("#profile-banner").style.backgroundImage = `url(${data.banner})`;
+  }
+  $("#profile-name").textContent = data.displayName || data.username;
+  let handleHtml = "";
+  if (data.xUsername) handleHtml += `<a href="https://x.com/${escapeHtml(data.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(data.xUsername)}</a>`;
+  if (data.walletAddress) handleHtml += (handleHtml ? " · " : "") + `<a href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
+  $("#profile-handle").innerHTML = handleHtml;
+  if (data.bio) {
+    $("#profile-bio").innerHTML = linkify(data.bio);
+  } else if (profileIsOwn) {
+    $("#profile-bio").innerHTML = '<span style="color:#555;cursor:pointer;" onclick="editBio()">Add a bio...</span>';
+  }
+
+  let statsHtml = "";
+  if (data.postCount > 0) statsHtml += `<div><span>${data.postCount}</span> posts</div>`;
+  if (data.stats?.totalMeets > 0) statsHtml += `<div><span>${data.stats.totalMeets}</span> meets</div>`;
+  if (data.stats?.received > 0) statsHtml += `<div><span>${pickupRate(data.stats)}%</span> pickup</div>`;
+  if (data.stats?.totalOnlineMs > 60_000) statsHtml += `<div><span>${formatOnlineTime(data.stats.totalOnlineMs)}</span> online</div>`;
+  $("#profile-stats-row").innerHTML = statsHtml;
+
+  // Actions
+  let actionsHtml = "";
+  if (profileIsOwn) {
+    actionsHtml += `<button class="profile-action-btn" onclick="editBio()">Edit Bio</button>`;
+    actionsHtml += `<button class="profile-action-btn" onclick="editBanner()">Change Banner</button>`;
+  } else {
+    const online = users.find(u => u.name.toLowerCase() === data.username.toLowerCase());
+    if (online) {
+      actionsHtml += `<button class="profile-action-btn primary" onclick="callUser('${online.userId}','${escapeHtml(online.name).replace(/'/g,"\\'")}',${online.avatar?"'"+online.avatar.replace(/'/g,"\\'")+"'":"null"})">Call</button>`;
+    }
+    actionsHtml += `<button class="profile-action-btn" onclick="openDM(${online?"'"+online.userId+"'":"null"},'${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}',${data.avatar?"'"+data.avatar.replace(/'/g,"\\'")+"'":"null"})">Message</button>`;
+  }
+  $("#profile-actions").innerHTML = actionsHtml;
+
+  // Compose box for own profile
+  if (profileIsOwn) {
+    $("#profile-compose").innerHTML = `
+      <div class="post-compose">
+        <textarea class="post-compose-input" id="post-input" placeholder="What's on your mind?" maxlength="500"></textarea>
+        <button class="post-compose-btn" onclick="submitPost()">Post</button>
+      </div>`;
+  }
+}
+
+function editBio() {
+  const bioEl = $("#profile-bio");
+  const current = bioEl.textContent === "Add a bio..." ? "" : bioEl.textContent;
+  bioEl.innerHTML = `<textarea class="bio-edit-area" id="bio-edit" maxlength="200">${escapeHtml(current)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button class="profile-action-btn primary" onclick="saveBio()">Save</button>
+      <button class="profile-action-btn" onclick="showProfile(profileTarget)">Cancel</button>
+    </div>`;
+  document.getElementById("bio-edit").focus();
+}
+
+function saveBio() {
+  const val = document.getElementById("bio-edit").value.trim();
+  if (socket) socket.emit("update-profile", { bio: val || null });
+  showProfile(profileTarget);
+}
+
+function editBanner() {
+  const input = document.createElement("input");
+  input.type = "file"; input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const dataUrl = await resizeBanner(file);
+    if (socket) socket.emit("update-profile", { banner: dataUrl });
+    $("#profile-banner").style.backgroundImage = `url(${dataUrl})`;
+  };
+  input.click();
+}
+
+function resizeBanner(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width, h = img.height;
+        const maxDim = 800;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function submitPost(parentId) {
+  const input = parentId ? document.getElementById("reply-input-" + parentId) : document.getElementById("post-input");
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text || !socket) return;
+  socket.emit("create-post", { text, parentId: parentId || null });
+  input.value = "";
+}
+
+function renderPost(post, isThread = false) {
+  const color = getColor(post.author || post.authorName || "?");
+  const initials = getInitials(post.author || post.authorName || "?");
+  const displayName = post.authorName || post.author;
+  const avatar = post.authorAvatar;
+  const bg = avatar ? `background-image:url(${avatar})` : `background:${color}`;
+  const inner = avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+  const isOwn = myName && (post.author === myName.toLowerCase());
+  const liked = post.likers && post.likers.includes(myName?.toLowerCase().trim());
+
+  let html = `<div class="post" data-post-id="${post.id}">`;
+  if (post.parentId && !isThread) {
+    html += `<div class="post-reply-indicator">replying to a post</div>`;
+  }
+  html += `<div class="post-header">
+    <div class="post-pfp" style="${bg}">${inner}</div>
+    <span class="post-author" style="cursor:pointer" onclick="showProfile('${escapeHtml(displayName).replace(/'/g,"\\'")}')">${escapeHtml(displayName)}</span>
+    <span class="post-time">${timeAgo(post.createdAt)}</span>
+  </div>
+  <div class="post-text">${linkify(post.text)}</div>
+  <div class="post-actions">
+    <button class="post-action${liked ? ' liked' : ''}" onclick="togglePostLike('${post.id}')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="${liked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+      ${post.likeCount || 0}
+    </button>
+    <button class="post-action" onclick="showThread('${post.id}')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      ${post.replyCount || 0}
+    </button>
+    ${isOwn ? `<button class="post-action" onclick="deletePost('${post.id}')" title="Delete">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+    </button>` : ""}
+  </div>`;
+  html += `</div>`;
+  return html;
+}
+
+window.togglePostLike = function(postId) {
+  if (socket) socket.emit("toggle-like", { postId });
+};
+
+window.deletePost = function(postId) {
+  if (socket) socket.emit("delete-post", { postId });
+};
+
+window.showThread = function(postId) {
+  if (socket) socket.emit("get-thread", { postId });
+};
+
+// ── Notifications ───────────────────────────────────────────────────────
+
+let notifUnread = 0;
+
+function updateNotifBadge(count) {
+  notifUnread = count;
+  const badge = document.getElementById("notif-badge");
+  if (badge) {
+    badge.textContent = count;
+    badge.classList.toggle("active", count > 0);
+  }
+}
+
+function renderNotifications(notifications) {
+  const panel = document.getElementById("notif-panel");
+  if (!notifications || notifications.length === 0) {
+    panel.innerHTML = '<div style="padding:20px;text-align:center;color:#555;font-size:12px;">No notifications</div>';
+    return;
+  }
+  panel.innerHTML = notifications.map(n => {
+    const cls = n.read ? "" : " unread";
+    let text = "";
+    if (n.type === "like") text = `<strong>${escapeHtml(n.fromUser)}</strong> liked your post`;
+    else if (n.type === "reply") text = `<strong>${escapeHtml(n.fromUser)}</strong> replied: ${escapeHtml(n.preview || "")}`;
+    else if (n.type === "dm") text = `<strong>${escapeHtml(n.fromUser)}</strong>: ${escapeHtml(n.preview || "")}`;
+    const onclick = n.postId ? `showProfile(profileTarget || '${escapeHtml(myName).replace(/'/g,"\\'")}'); showThread('${n.postId}')` : "";
+    return `<div class="notif-item${cls}" onclick="${onclick}">
+      <div class="notif-item-text">${text}</div>
+      <div class="notif-item-time">${timeAgo(n.createdAt)}</div>
+    </div>`;
+  }).join("");
+}
 
 // Directory
 let directoryData = [];
@@ -3345,10 +3865,10 @@ function renderDirectory(filter = "") {
     const inner = u.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
     let meta = [];
     if (u.xUsername) meta.push("@" + escapeHtml(u.xUsername));
-    if (u.walletAddress) meta.push(escapeHtml(u.walletAddress.slice(0,6)) + "..." + escapeHtml(u.walletAddress.slice(-4)));
-    // Check if online
+    if (u.walletAddress) meta.push(`<a href="https://etherscan.io/address/${escapeHtml(u.walletAddress)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(u.walletAddress.slice(0,6))}...${escapeHtml(u.walletAddress.slice(-4))}</a>`);
     const online = users.find(ou => ou.name.toLowerCase() === u.name.toLowerCase());
     if (online) meta.push('<span style="color:var(--green)">online</span>');
+    else if (u.lastSeen) meta.push(timeAgo(u.lastSeen));
 
     return `<div class="directory-item" onclick="directoryAction('${escapeHtml(u.name).replace(/'/g, "\\'")}', ${u.xUsername ? "'" + escapeHtml(u.xUsername).replace(/'/g, "\\'") + "'" : "null"})">
       <div class="directory-item-pfp" style="${bg}">${inner}</div>
@@ -3365,18 +3885,9 @@ window.directoryAction = function(name, xUsername) {
   const contactKey = xUsername ? "@" + xUsername.toLowerCase() : name.toLowerCase();
   if (!myContacts.includes(contactKey)) {
     if (socket) socket.emit("add-contact", { contactName: contactKey });
-    showToast(`Added ${name} to contacts`, "success");
   }
-  // Close directory
   document.getElementById("directory-panel").classList.remove("active");
-  // Check if online — if so, open DM; otherwise open offline DM
-  const online = users.find(u => u.name.toLowerCase() === name.toLowerCase());
-  if (online) {
-    openDM(online.userId, online.name, online.avatar);
-  } else {
-    const cached = getCachedMeta(name.toLowerCase());
-    openDM(null, name, cached?.avatar || null);
-  }
+  showProfile(name);
 };
 
 $("#directory-btn").addEventListener("click", async () => {
@@ -3398,6 +3909,24 @@ $("#directory-close").addEventListener("click", () => {
 
 $("#directory-search").addEventListener("input", (e) => {
   renderDirectory(e.target.value);
+});
+
+// Notifications
+$("#notif-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById("notif-panel");
+  panel.classList.toggle("active");
+  if (panel.classList.contains("active")) {
+    if (socket) socket.emit("get-notifications");
+    // Mark as read after viewing
+    setTimeout(() => {
+      if (socket) socket.emit("mark-notifications-read");
+      updateNotifBadge(0);
+    }, 1500);
+  }
+});
+document.addEventListener("click", () => {
+  document.getElementById("notif-panel")?.classList.remove("active");
 });
 
 // Custom status

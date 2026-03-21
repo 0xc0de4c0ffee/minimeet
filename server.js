@@ -542,6 +542,283 @@ async function dbLoadDMs(nameA, nameB, limit = 50) {
   return msgs.slice(-limit);
 }
 
+// ─── User profiles (bio + banner) ────────────────────────────────────────────
+
+const profileCache = new Map();
+
+async function dbGetProfile(name) {
+  const key = name.toLowerCase().trim();
+  if (profileCache.has(key)) return profileCache.get(key);
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("user_profiles").select("*").eq("name", key).single();
+      if (data) { const p = { bio: data.bio || null, banner: data.banner || null, customStatus: data.custom_status || null }; profileCache.set(key, p); return p; }
+    } catch {}
+    return { bio: null, banner: null, customStatus: null };
+  }
+  const stored = jsonGet("user_profiles", key);
+  let p; try { p = stored ? JSON.parse(stored) : { bio: null, banner: null, customStatus: null }; } catch { p = { bio: null, banner: null, customStatus: null }; }
+  profileCache.set(key, p);
+  return p;
+}
+
+async function dbSetProfile(name, profile) {
+  const key = name.toLowerCase().trim();
+  profileCache.set(key, profile);
+  if (supabase) {
+    try {
+      await supabase.from("user_profiles").upsert({ name: key, bio: profile.bio, banner: profile.banner, custom_status: profile.customStatus || null, updated_at: new Date().toISOString() });
+    } catch (e) { console.warn("Profile write error:", e.message); }
+    return;
+  }
+  jsonSet("user_profiles", key, JSON.stringify(profile));
+}
+
+// ─── Posts ───────────────────────────────────────────────────────────────────
+
+async function dbCreatePost(author, text, parentId = null) {
+  const id = uuidv4().slice(0, 12);
+  const key = author.toLowerCase().trim();
+  const now = Date.now();
+  let rootId = null;
+
+  if (parentId) {
+    const parent = await dbGetPost(parentId);
+    if (parent) rootId = parent.rootId || parent.id;
+  }
+
+  const post = { id, author: key, text, parentId, rootId, likeCount: 0, replyCount: 0, createdAt: now };
+
+  if (supabase) {
+    try {
+      await supabase.from("posts").insert({ id, author: key, text, parent_id: parentId, root_id: rootId, like_count: 0, reply_count: 0, created_at: new Date(now).toISOString() });
+      if (parentId) {
+        await supabase.rpc("increment_post_reply_count", { pid: parentId }).catch(() => {
+          supabase.from("posts").update({ reply_count: supabase.raw ? undefined : 1 }).eq("id", parentId); // fallback
+        });
+      }
+    } catch (e) { console.warn("Post create error:", e.message); }
+  } else {
+    const stored = jsonGet("posts", "_all");
+    let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+    posts.push(post);
+    jsonSet("posts", "_all", JSON.stringify(posts));
+    if (parentId) {
+      const parent = posts.find(p => p.id === parentId);
+      if (parent) { parent.replyCount = (parent.replyCount || 0) + 1; jsonSet("posts", "_all", JSON.stringify(posts)); }
+    }
+  }
+  return post;
+}
+
+async function dbGetPost(postId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("posts").select("*").eq("id", postId).single();
+      if (data) return { id: data.id, author: data.author, text: data.text, parentId: data.parent_id, rootId: data.root_id, likeCount: data.like_count || 0, replyCount: data.reply_count || 0, createdAt: new Date(data.created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const stored = jsonGet("posts", "_all");
+  let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+  return posts.find(p => p.id === postId) || null;
+}
+
+async function dbGetUserPosts(author, limit = 20, offset = 0) {
+  const key = author.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data, count } = await supabase.from("posts").select("*", { count: "exact" }).eq("author", key).is("parent_id", null).order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      const posts = (data || []).map(d => ({ id: d.id, author: d.author, text: d.text, parentId: d.parent_id, rootId: d.root_id, likeCount: d.like_count || 0, replyCount: d.reply_count || 0, createdAt: new Date(d.created_at).getTime() }));
+      return { posts, total: count || 0 };
+    } catch (e) { console.warn("Posts read error:", e.message); }
+    return { posts: [], total: 0 };
+  }
+  const stored = jsonGet("posts", "_all");
+  let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+  const userPosts = posts.filter(p => p.author === key && !p.parentId).sort((a, b) => b.createdAt - a.createdAt);
+  return { posts: userPosts.slice(offset, offset + limit), total: userPosts.length };
+}
+
+async function dbGetThread(rootId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("posts").select("*").or(`id.eq.${rootId},root_id.eq.${rootId}`).order("created_at", { ascending: true });
+      return (data || []).map(d => ({ id: d.id, author: d.author, text: d.text, parentId: d.parent_id, rootId: d.root_id, likeCount: d.like_count || 0, replyCount: d.reply_count || 0, createdAt: new Date(d.created_at).getTime() }));
+    } catch (e) { console.warn("Thread read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("posts", "_all");
+  let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+  return posts.filter(p => p.id === rootId || p.rootId === rootId).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+async function dbDeletePost(postId, author) {
+  const key = author.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const post = await dbGetPost(postId);
+      if (!post || post.author !== key) return false;
+      // Delete likes, child replies, and the post
+      await supabase.from("post_likes").delete().eq("post_id", postId);
+      await supabase.from("posts").delete().eq("root_id", postId); // delete replies
+      await supabase.from("posts").delete().eq("id", postId);
+      if (post.parentId) {
+        try { await supabase.rpc("decrement_post_reply_count", { pid: post.parentId }); } catch {}
+      }
+      await supabase.from("notifications").delete().eq("post_id", postId);
+      return true;
+    } catch (e) { console.warn("Post delete error:", e.message); return false; }
+  }
+  const stored = jsonGet("posts", "_all");
+  let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+  const post = posts.find(p => p.id === postId);
+  if (!post || post.author !== key) return false;
+  const parentId = post.parentId;
+  // Remove post and its replies
+  const filtered = posts.filter(p => p.id !== postId && p.rootId !== postId);
+  if (parentId) {
+    const parent = filtered.find(p => p.id === parentId);
+    if (parent) parent.replyCount = Math.max(0, (parent.replyCount || 0) - 1);
+  }
+  jsonSet("posts", "_all", JSON.stringify(filtered));
+  // Clean likes
+  const likesStored = jsonGet("post_likes", "_all");
+  let likes; try { likes = likesStored ? JSON.parse(likesStored) : []; } catch { likes = []; }
+  jsonSet("post_likes", "_all", JSON.stringify(likes.filter(l => l.postId !== postId)));
+  return true;
+}
+
+async function dbToggleLike(postId, userName) {
+  const user = userName.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data: existing } = await supabase.from("post_likes").select("post_id").eq("post_id", postId).eq("user_name", user).single();
+      if (existing) {
+        await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_name", user);
+        try { await supabase.rpc("decrement_post_like_count", { pid: postId }); } catch {
+          const post = await dbGetPost(postId);
+          if (post) await supabase.from("posts").update({ like_count: Math.max(0, post.likeCount - 1) }).eq("id", postId);
+        }
+        return { liked: false };
+      } else {
+        await supabase.from("post_likes").insert({ post_id: postId, user_name: user, created_at: new Date().toISOString() });
+        try { await supabase.rpc("increment_post_like_count", { pid: postId }); } catch {
+          const post = await dbGetPost(postId);
+          if (post) await supabase.from("posts").update({ like_count: post.likeCount + 1 }).eq("id", postId);
+        }
+        return { liked: true };
+      }
+    } catch (e) { console.warn("Like toggle error:", e.message); return { liked: false }; }
+  }
+  const stored = jsonGet("post_likes", "_all");
+  let likes; try { likes = stored ? JSON.parse(stored) : []; } catch { likes = []; }
+  const idx = likes.findIndex(l => l.postId === postId && l.userName === user);
+  const postsStored = jsonGet("posts", "_all");
+  let posts; try { posts = postsStored ? JSON.parse(postsStored) : []; } catch { posts = []; }
+  const post = posts.find(p => p.id === postId);
+  if (idx >= 0) {
+    likes.splice(idx, 1);
+    if (post) post.likeCount = Math.max(0, (post.likeCount || 0) - 1);
+    jsonSet("post_likes", "_all", JSON.stringify(likes));
+    jsonSet("posts", "_all", JSON.stringify(posts));
+    return { liked: false };
+  } else {
+    likes.push({ postId, userName: user, createdAt: Date.now() });
+    if (post) post.likeCount = (post.likeCount || 0) + 1;
+    jsonSet("post_likes", "_all", JSON.stringify(likes));
+    jsonSet("posts", "_all", JSON.stringify(posts));
+    return { liked: true };
+  }
+}
+
+async function dbGetPostLikes(postId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("post_likes").select("user_name").eq("post_id", postId);
+      return (data || []).map(d => d.user_name);
+    } catch {}
+    return [];
+  }
+  const stored = jsonGet("post_likes", "_all");
+  let likes; try { likes = stored ? JSON.parse(stored) : []; } catch { likes = []; }
+  return likes.filter(l => l.postId === postId).map(l => l.userName);
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────────
+
+async function dbCreateNotification(recipient, type, fromUser, postId, preview) {
+  const id = uuidv4().slice(0, 12);
+  const key = recipient.toLowerCase().trim();
+  // Don't notify yourself
+  if (key === fromUser.toLowerCase().trim()) return null;
+  const notif = { id, recipient: key, type, fromUser: fromUser.toLowerCase().trim(), postId, preview: (preview || "").slice(0, 80), read: false, createdAt: Date.now() };
+  if (supabase) {
+    try {
+      await supabase.from("notifications").insert({ id, recipient: key, type, from_user: notif.fromUser, post_id: postId, preview: notif.preview, read: false, created_at: new Date().toISOString() });
+    } catch (e) { console.warn("Notification write error:", e.message); }
+  } else {
+    const stored = jsonGet("notifications", key);
+    let notifs; try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+    notifs.push(notif);
+    if (notifs.length > 200) notifs.splice(0, notifs.length - 200);
+    jsonSet("notifications", key, JSON.stringify(notifs));
+  }
+  return notif;
+}
+
+async function dbGetNotifications(name, limit = 50) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("notifications").select("*").eq("recipient", key).order("created_at", { ascending: false }).limit(limit);
+      return (data || []).map(d => ({ id: d.id, type: d.type, fromUser: d.from_user, postId: d.post_id, preview: d.preview, read: d.read, createdAt: new Date(d.created_at).getTime() }));
+    } catch (e) { console.warn("Notification read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("notifications", key);
+  let notifs; try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+  return notifs.slice(-limit).reverse();
+}
+
+async function dbMarkNotificationsRead(name) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try { await supabase.from("notifications").update({ read: true }).eq("recipient", key).eq("read", false); } catch {}
+    return;
+  }
+  const stored = jsonGet("notifications", key);
+  let notifs; try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+  notifs.forEach(n => n.read = true);
+  jsonSet("notifications", key, JSON.stringify(notifs));
+}
+
+async function dbGetUnreadCount(name) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("recipient", key).eq("read", false);
+      return count || 0;
+    } catch {}
+    return 0;
+  }
+  const stored = jsonGet("notifications", key);
+  let notifs; try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+  return notifs.filter(n => !n.read).length;
+}
+
+// Helper: send real-time notification if user is online
+function emitNotification(recipientName, notif) {
+  if (!notif) return;
+  for (const [userId, data] of onlineUsers) {
+    if (data.name.toLowerCase() === recipientName.toLowerCase() && !data.disconnectedAt) {
+      const s = getSocketByUserId(userId);
+      if (s) s.emit("new-notification", notif);
+      break;
+    }
+  }
+}
+
 // ─── Last-call timestamps (per pair) ─────────────────────────────────────────
 
 async function dbGetLastCall(nameA, nameB) {
@@ -942,8 +1219,9 @@ io.on("connection", (socket) => {
         socket.emit("register-error", { message: "Wallet signature verification failed" });
         return;
       }
-    } else if (safeWallet && !reconnectUserId && !sessionToken) {
-      // First-time wallet login without signature — reject
+    } else if (safeWallet && !reconnectUserId && !sessionToken && !xUsername) {
+      // First-time wallet-only login without signature — reject
+      // Skip if X-authenticated (X OAuth already verified identity)
       socket.emit("register-error", { message: "Wallet signature required" });
       return;
     }
@@ -963,7 +1241,8 @@ io.on("connection", (socket) => {
       const prefs = await dbGetPrefs(eu.name);
       eu.autoMeet = prefs.autoMeet;
       eu.cooldownHours = prefs.cooldownHours;
-      socket.emit("registered", { userId: reconnectUserId, name: eu.name, reconnected: true, avatar: resolvedAvatar, stats: eu.stats, xUsername: eu.xUsername || null, walletAddress: eu.walletAddress || null, autoMeet: eu.autoMeet, cooldownHours: eu.cooldownHours });
+      if (!eu.customStatus) { const p = await dbGetProfile(eu.name); eu.customStatus = p.customStatus || null; }
+      socket.emit("registered", { userId: reconnectUserId, name: eu.name, reconnected: true, avatar: resolvedAvatar, stats: eu.stats, xUsername: eu.xUsername || null, walletAddress: eu.walletAddress || null, customStatus: eu.customStatus || null, autoMeet: eu.autoMeet, cooldownHours: eu.cooldownHours });
       broadcastUserList();
       return;
     }
@@ -1010,23 +1289,22 @@ io.on("connection", (socket) => {
 
     const storedWallet = safeWallet || await dbGetWallet(trimmedName);
     if (safeWallet && safeWallet !== storedWallet) await dbSetWallet(trimmedName, safeWallet);
+    const storedProfile = await dbGetProfile(trimmedName);
 
     onlineUsers.set(userId, {
       socketId: socket.id, name: trimmedName, status: "online",
       avatar: resolvedAvatar, stats, disconnectedAt: null, connectedAt: Date.now(),
       xUsername: xUsername || null, walletAddress: storedWallet || null,
+      customStatus: storedProfile.customStatus || null,
       autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours,
     });
     takenNames.set(trimmedName.toLowerCase(), userId);
 
-    // Issue session token for guest users
-    let newSessionToken = null;
-    if (!xUsername) {
-      newSessionToken = sessionToken || base64url(crypto.randomBytes(24));
-      await dbSetSessionToken(trimmedName, hashToken(newSessionToken));
-    }
+    // Issue session token for all users (needed for reconnection after server restart)
+    let newSessionToken = sessionToken || base64url(crypto.randomBytes(24));
+    await dbSetSessionToken(trimmedName, hashToken(newSessionToken));
 
-    socket.emit("registered", { userId, name: trimmedName, reconnected: false, avatar: resolvedAvatar, stats, xUsername: xUsername || null, walletAddress: storedWallet || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours, sessionToken: newSessionToken });
+    socket.emit("registered", { userId, name: trimmedName, reconnected: false, avatar: resolvedAvatar, stats, xUsername: xUsername || null, walletAddress: storedWallet || null, customStatus: storedProfile.customStatus || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours, sessionToken: newSessionToken });
     broadcastUserList();
     console.log(`✅ ${trimmedName}${xUsername ? " (@" + xUsername + ")" : ""}${storedWallet ? " [" + storedWallet.slice(0,6) + "...]" : ""} registered as ${userId}`);
 
@@ -1045,16 +1323,20 @@ io.on("connection", (socket) => {
     broadcastUserList();
   });
 
-  socket.on("set-status", ({ status, customStatus }) => {
+  socket.on("set-status", async ({ status, customStatus }) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     // Update presence status
     if (status === "online" || status === "idle") {
       userData.status = status;
     }
-    // Update custom status text (like Discord)
+    // Update custom status text (persisted like bio)
     if (customStatus !== undefined) {
       userData.customStatus = (typeof customStatus === "string") ? customStatus.trim().slice(0, 50) : null;
+      // Persist to profile
+      const profile = await dbGetProfile(userData.name);
+      profile.customStatus = userData.customStatus;
+      await dbSetProfile(userData.name, profile);
     }
     broadcastUserList();
   });
@@ -1279,7 +1561,7 @@ io.on("connection", (socket) => {
   });
 
   // P2P direct messages (persisted)
-  socket.on("chat-dm", ({ toUserId, toName, text }) => {
+  socket.on("chat-dm", async ({ toUserId, toName, text }) => {
     if (!rateLimit(socket, "chat", 10, 10_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
@@ -1300,6 +1582,9 @@ io.on("connection", (socket) => {
       }
       socket.emit("chat-dm-sent", { toUserId, toName: targetName, ...msg });
       dbSaveDM(userData.name, targetName, msg);
+      // DM notification
+      const dmNotif = await dbCreateNotification(targetName, "dm", userData.name, null, trimmed);
+      emitNotification(targetName, dmNotif);
     } else if (toName && typeof toName === "string") {
       // Offline target by name — persist for when they come online
       targetName = toName.trim().slice(0, 60);
@@ -1316,6 +1601,8 @@ io.on("connection", (socket) => {
       }
       socket.emit("chat-dm-sent", { toUserId: targetUserId, toName: targetName, ...msg });
       dbSaveDM(userData.name, targetName, msg);
+      const dmNotif2 = await dbCreateNotification(targetName, "dm", userData.name, null, trimmed);
+      emitNotification(targetName, dmNotif2);
     }
   });
 
@@ -1326,6 +1613,111 @@ io.on("connection", (socket) => {
     if (!peerName || typeof peerName !== "string") return;
     const messages = await dbLoadDMs(userData.name, peerName);
     socket.emit("dm-history", { peerName, messages });
+  });
+
+  // ── Posts & Profiles ──────────────────────────────────────────────────────
+
+  socket.on("create-post", async ({ text, parentId }) => {
+    if (!rateLimit(socket, "post", 5, 60_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!userData.xUsername && !userData.walletAddress) { socket.emit("post-error", { message: "Verified account required to post" }); return; }
+    const trimmed = (text || "").trim().slice(0, 500);
+    if (!trimmed) return;
+    const post = await dbCreatePost(userData.name, trimmed, parentId || null);
+    post.authorName = userData.name;
+    post.authorAvatar = userData.avatar || null;
+    post.authorXUsername = userData.xUsername || null;
+    socket.emit("post-created", post);
+    // Notify parent post author on reply
+    if (parentId) {
+      const parent = await dbGetPost(parentId);
+      if (parent && parent.author !== userData.name.toLowerCase()) {
+        const notif = await dbCreateNotification(parent.author, "reply", userData.name, parentId, trimmed);
+        emitNotification(parent.author, notif);
+      }
+    }
+  });
+
+  socket.on("delete-post", async ({ postId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const ok = await dbDeletePost(postId, userData.name);
+    if (ok) socket.emit("post-deleted", { postId });
+  });
+
+  socket.on("toggle-like", async ({ postId }) => {
+    if (!rateLimit(socket, "like", 20, 10_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const result = await dbToggleLike(postId, userData.name);
+    const post = await dbGetPost(postId);
+    const likers = await dbGetPostLikes(postId);
+    socket.emit("post-liked", { postId, likeCount: post ? post.likeCount : 0, liked: result.liked, likers });
+    // Notify post author on like
+    if (result.liked && post && post.author !== userData.name.toLowerCase()) {
+      const notif = await dbCreateNotification(post.author, "like", userData.name, postId, null);
+      emitNotification(post.author, notif);
+    }
+  });
+
+  socket.on("get-user-posts", async ({ username, limit, offset }) => {
+    if (!username || typeof username !== "string") return;
+    const result = await dbGetUserPosts(username, limit || 20, offset || 0);
+    // Enrich with author info
+    for (const post of result.posts) {
+      const likers = await dbGetPostLikes(post.id);
+      post.likers = likers;
+      post.liked = myName ? likers.includes(socket.userId ? onlineUsers.get(socket.userId)?.name?.toLowerCase() : "") : false;
+    }
+    socket.emit("user-posts", { username, ...result });
+  });
+
+  socket.on("get-thread", async ({ postId }) => {
+    if (!postId) return;
+    const thread = await dbGetThread(postId);
+    for (const post of thread) {
+      post.likers = await dbGetPostLikes(post.id);
+    }
+    socket.emit("thread", { postId, posts: thread });
+  });
+
+  socket.on("get-profile", async ({ username }) => {
+    if (!username || typeof username !== "string") return;
+    const key = username.toLowerCase().trim();
+    const profile = await dbGetProfile(key);
+    const stats = await dbGetStats(key);
+    const avatar = await dbGetAvatar(key);
+    const wallet = await dbGetWallet(key);
+    const { total: postCount } = await dbGetUserPosts(key, 0, 0);
+    // Find xUsername from directory or online users
+    let xUsername = null;
+    for (const [, d] of onlineUsers) { if (d.name.toLowerCase() === key) { xUsername = d.xUsername; break; } }
+    socket.emit("profile", { username: key, displayName: username, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, stats, postCount });
+  });
+
+  socket.on("update-profile", async ({ bio, banner }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const profile = await dbGetProfile(userData.name);
+    if (bio !== undefined) profile.bio = typeof bio === "string" ? bio.trim().slice(0, 200) : null;
+    if (banner !== undefined) profile.banner = (typeof banner === "string" && banner.length <= 500_000) ? banner : null;
+    await dbSetProfile(userData.name, profile);
+    socket.emit("profile-updated", { bio: profile.bio, banner: profile.banner });
+  });
+
+  socket.on("get-notifications", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const notifications = await dbGetNotifications(userData.name);
+    const unreadCount = await dbGetUnreadCount(userData.name);
+    socket.emit("notifications", { notifications, unreadCount });
+  });
+
+  socket.on("mark-notifications-read", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    await dbMarkNotificationsRead(userData.name);
   });
 
   // Poke — lightweight nudge
@@ -1424,7 +1816,12 @@ io.on("connection", (socket) => {
       }
     }
 
-    userData.disconnectedAt = Date.now(); broadcastUserList();
+    userData.disconnectedAt = Date.now();
+    // Update last-seen in directory for verified users
+    if (userData.xUsername || userData.walletAddress) {
+      dbAddToDirectory(userData.name, { displayName: userData.name, xUsername: userData.xUsername, walletAddress: userData.walletAddress, avatar: userData.avatar });
+    }
+    broadcastUserList();
     const timer = setTimeout(async () => {
       for (const [callId, call] of activeCalls) {
         if (call.callerId === userId || call.calleeId === userId) {
