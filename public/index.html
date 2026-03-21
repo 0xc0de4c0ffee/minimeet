@@ -1741,7 +1741,7 @@
   <!-- ══════════════ PROFILE SCREEN ══════════════ -->
   <div id="profile-screen" class="screen">
     <div class="profile-banner" id="profile-banner">
-      <button class="profile-back" id="profile-back" onclick="showScreen('contacts-screen')">
+      <button class="profile-back" id="profile-back" onclick="window.history.pushState({},'','/');showScreen('contacts-screen')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
       </button>
       <button class="profile-banner-edit" id="profile-banner-edit" onclick="editBanner()" style="display:none;" title="Change banner">
@@ -4110,6 +4110,8 @@ let profileIsOwn = false;
 function showProfile(username) {
   profileTarget = username;
   profileIsOwn = (myName && username.toLowerCase() === myName.toLowerCase());
+  // Update URL to shareable profile link
+  window.history.pushState({ profile: username }, "", `/?profile=${encodeURIComponent(username)}`);
   showScreen("profile-screen");
   // Clear while loading
   $("#profile-name").textContent = username;
@@ -4181,14 +4183,21 @@ function handleProfileData(data) {
     }
   }
   $("#profile-handle").innerHTML = handleHtml;
-  let bioHtml = "";
-  if (data.customStatus) bioHtml += `<div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px;">${escapeHtml(data.customStatus)}</div>`;
-  if (data.bio) {
-    bioHtml += linkify(data.bio);
+  // Custom status (separate from bio)
+  let statusHtml = "";
+  if (data.customStatus) {
+    statusHtml = `<div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:4px;cursor:${profileIsOwn ? "pointer" : "default"}" ${profileIsOwn ? 'onclick="editProfileStatus()"' : ""}>${escapeHtml(data.customStatus)}</div>`;
   } else if (profileIsOwn) {
-    bioHtml += '<span style="color:#555;cursor:pointer;" onclick="editBio()">Add a bio...</span>';
+    statusHtml = `<div style="font-size:11px;color:#444;font-family:var(--font-mono);margin-bottom:4px;cursor:pointer" onclick="editProfileStatus()">set status...</div>`;
   }
-  $("#profile-bio").innerHTML = bioHtml;
+  // Bio (editable separately)
+  let bioHtml = "";
+  if (data.bio) {
+    bioHtml = `<div id="profile-bio-text">${linkify(data.bio)}</div>`;
+  } else if (profileIsOwn) {
+    bioHtml = `<div id="profile-bio-text"><span style="color:#555;cursor:pointer;" onclick="editBio()">Add a bio...</span></div>`;
+  }
+  $("#profile-bio").innerHTML = statusHtml + bioHtml;
 
   let statsHtml = "";
   if (data.postCount > 0) statsHtml += `<div><span>${data.postCount}</span> posts</div>`;
@@ -4201,7 +4210,7 @@ function handleProfileData(data) {
   let actionsHtml = "";
   if (profileIsOwn) {
     // Bio/banner editing handled inline (click bio text or pencil icon on banner)
-    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeHtml(myName).replace(/'/g,"\\'")}')">Share Profile</button>`;
+    actionsHtml += `<button class="link-btn" onclick="copyProfileLink('${escapeHtml(myName).replace(/'/g,"\\'")}')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg> share</button>`;
     // Key export for guests (no X or wallet to recover from)
     if (!myXUsername && !myWalletAddress) {
       actionsHtml += `<button class="profile-action-btn" onclick="exportE2EKey()">Export Key</button>`;
@@ -4214,7 +4223,7 @@ function handleProfileData(data) {
     if (online) {
       actionsHtml += `<button class="profile-action-btn primary" onclick="callUser('${online.userId}','${escapeHtml(online.name).replace(/'/g,"\\'")}',${online.avatar?"'"+online.avatar.replace(/'/g,"\\'")+"'":"null"})">Call</button>`;
     }
-    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')">Share</button>`;
+    actionsHtml += `<button class="link-btn" onclick="copyProfileLink('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg> share</button>`;
   }
   $("#profile-actions").innerHTML = actionsHtml;
 
@@ -4236,15 +4245,22 @@ function handleProfileData(data) {
 }
 
 window.editBio = function() {
-  const bioEl = $("#profile-bio");
-  const current = bioEl.textContent === "Add a bio..." ? "" : bioEl.textContent;
-  bioEl.innerHTML = `<textarea class="bio-edit-area" id="bio-edit" maxlength="200">${escapeHtml(current)}</textarea>
+  const bioTextEl = document.getElementById("profile-bio-text");
+  if (!bioTextEl) return;
+  const current = bioTextEl.textContent === "Add a bio..." ? "" : bioTextEl.textContent;
+  bioTextEl.innerHTML = `<textarea class="bio-edit-area" id="bio-edit" maxlength="200">${escapeHtml(current)}</textarea>
     <div style="display:flex;gap:6px;margin-top:6px;">
       <button class="profile-action-btn primary" onclick="saveBio()">Save</button>
       <button class="profile-action-btn" onclick="showProfile(profileTarget)">Cancel</button>
     </div>`;
   document.getElementById("bio-edit").focus();
-}
+};
+
+window.editProfileStatus = function() {
+  document.getElementById("status-input").value = myCustomStatus || "";
+  document.getElementById("status-overlay").classList.add("active");
+  document.getElementById("status-input").focus();
+};
 
 function saveBio() {
   const val = document.getElementById("bio-edit").value.trim();
@@ -4974,6 +4990,15 @@ $("#recall-btn").addEventListener("click", () => {
 $("#back-btn").addEventListener("click", () => { currentRemote = null; showScreen("contacts-screen"); });
 
 // ── Auto-reconnect on refresh ────────────────────────────────────────────
+// Handle browser back/forward for profile URLs
+window.addEventListener("popstate", (e) => {
+  if (e.state?.profile) {
+    showProfile(e.state.profile);
+  } else if (myUserId) {
+    showScreen("contacts-screen");
+  }
+});
+
 window.addEventListener("load", async () => {
   fetchTurnCredentials(); // non-blocking — creds ready before any call starts
   const savedAvatar = getStoredAvatar();
