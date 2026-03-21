@@ -6,7 +6,11 @@
   <title>minimeet.cc</title>
   <link rel="icon" href="data:image/svg+xml,<svg width='120' height='140' viewBox='0 0 120 140' xmlns='http://www.w3.org/2000/svg'><rect x='0' y='0' width='120' height='140' rx='12' fill='%230A0A0F'/><text x='60' y='56' text-anchor='middle' font-family='Helvetica Neue,Arial,sans-serif' font-size='40' font-weight='800' fill='%23FFFFFF' letter-spacing='1'>MM</text><line x1='25' y1='78' x2='95' y2='68' stroke='%23E8453C' stroke-width='3' stroke-linecap='round'/><text x='60' y='116' text-anchor='middle' font-family='Helvetica Neue,Arial,sans-serif' font-size='40' font-weight='800' fill='%23FFFFFF' letter-spacing='1'>CC</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js" integrity="sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4" crossorigin="anonymous"></script>
+  <script src="/ethers.min.js"></script>
+  <script src="/walletconnect.min.js"></script>
+  <script src="/Wallet.js"></script>
+  <link rel="stylesheet" href="/wallet.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -22,6 +26,13 @@
       --amber: #E8A83C;
       --font-body: 'DM Sans', sans-serif;
       --font-mono: 'Space Mono', monospace;
+      /* Wallet CSS compat */
+      --fg: #EEEEF0;
+      --modal-overlay: rgba(0,0,0,0.6);
+      --modal-bg: #1a1a2e;
+      --modal-border: rgba(255,255,255,0.08);
+      --btn-bg: rgba(255,255,255,0.07);
+      --btn-fg: #EEEEF0;
     }
 
     body {
@@ -173,6 +184,65 @@
       transform: translateY(-1px);
     }
     .x-login-btn svg { flex-shrink: 0; }
+    .wallet-login-btn {
+      width: 320px; padding: 13px;
+      background: #000; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 14px; color: #fff;
+      font-size: 15px; font-weight: 600;
+      font-family: var(--font-body);
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .wallet-login-btn:hover {
+      background: #1a1a1a;
+      border-color: rgba(255,255,255,0.25);
+      transform: translateY(-1px);
+    }
+    .wallet-handle {
+      font-family: var(--font-mono); font-size: 11px;
+      color: #888; font-weight: 400;
+    }
+    .link-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-muted);
+      font-size: 11px; font-family: var(--font-mono);
+      padding: 4px 10px; cursor: pointer;
+      transition: all 0.2s; text-decoration: none;
+    }
+    .link-btn:hover { border-color: var(--red); color: var(--text); }
+    .my-custom-status {
+      font-size: 11px; color: var(--text-muted); cursor: pointer;
+      font-family: var(--font-mono); padding: 2px 0;
+      max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .my-custom-status:hover { color: var(--text); }
+    .my-custom-status:empty::after { content: "set status..."; opacity: 0.3; }
+    .status-input-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 3000;
+      justify-content: center; align-items: center;
+    }
+    .status-input-overlay.active { display: flex; }
+    .status-input-box {
+      background: #1a1a2e; border: 1px solid var(--border); padding: 20px;
+      width: 320px; max-width: 90vw;
+    }
+    .status-input-box input {
+      width: 100%; padding: 10px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text);
+      font-family: var(--font-mono); font-size: 13px; outline: none;
+    }
+    .status-input-box input:focus { border-color: rgba(232,69,60,0.5); }
+    .status-input-actions {
+      display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
+    }
+    .status-input-actions button {
+      padding: 6px 14px; border: 1px solid var(--border); background: none;
+      color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--font-body);
+    }
+    .status-input-actions button:hover { background: var(--surface-hover); }
+    .status-input-actions button.primary { background: var(--red); border-color: var(--red); }
+    .status-input-actions button.primary:hover { opacity: 0.9; }
     .x-handle {
       font-family: var(--font-mono); font-size: 11px;
       color: #888; font-weight: 400;
@@ -212,21 +282,26 @@
     }
 
     .info-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 16px; gap: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+      margin-bottom: 16px;
+    }
+    .info-top {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
     .my-info {
       display: flex; align-items: center; gap: 8px;
+      min-width: 0; flex: 1;
     }
     .my-pfp {
       width: 26px; height: 26px; cursor: pointer;
       border: 1.5px solid rgba(255,255,255,0.15);
-      transition: border-color 0.2s;
+      transition: border-color 0.2s; flex-shrink: 0;
     }
     .my-pfp:hover { border-color: var(--amber); }
     .my-name {
       font-size: 12px; color: var(--text-muted);
       font-family: var(--font-mono);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .my-name span { color: var(--green); font-weight: 700; }
     .sign-out-link {
@@ -234,7 +309,10 @@
       font-size: 11px; transition: color 0.2s;
     }
     .sign-out-link:hover { color: var(--red); }
-    .info-right { display: flex; align-items: center; gap: 12px; }
+    .info-right {
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+    }
     .online-count {
       font-size: 12px; color: var(--text-muted);
       font-family: var(--font-mono);
@@ -382,11 +460,13 @@
 
     /* My stats bar */
     .my-stats {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 6px;
       font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+      background: var(--surface); padding: 4px 10px; border-radius: 8px;
     }
-    .my-stats-item { display: flex; align-items: center; gap: 3px; }
+    .my-stats-item { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
     .my-stats-item span { color: var(--text); font-weight: 700; }
+    .my-stats:empty { display: none; }
     /* Auto-Meet toggle */
     .auto-meet-toggle {
       display: flex; align-items: center; gap: 6px;
@@ -964,7 +1044,7 @@
     @media (max-width: 480px) {
       /* Login */
       .login-form-row { width: 280px; }
-      .login-btn, .x-login-btn, .login-divider { width: 280px; }
+      .login-btn, .x-login-btn, .wallet-login-btn, .login-divider { width: 280px; }
       .login-title { font-size: 26px; }
       .login-subtitle { font-size: 13px; }
 
@@ -973,15 +1053,20 @@
       .header { flex-wrap: wrap; gap: 10px; }
       .timer-badge { font-size: 10px; padding: 4px 8px; }
 
-      /* Info bar: wrap to two rows */
-      .info-bar { flex-wrap: wrap; gap: 8px; }
-      .my-info { order: 1; flex: 1 1 100%; }
-      .info-right { order: 2; flex: 1 1 100%; flex-wrap: wrap; gap: 6px; }
+      /* Info bar */
+      .info-bar { gap: 6px; }
+      .info-top { gap: 8px; }
+      .my-name { font-size: 11px; }
+      .x-handle, .wallet-handle { font-size: 10px; }
+      .info-right { gap: 6px; }
       .auto-meet-toggle { font-size: 10px; padding: 4px 8px; }
       .go-live-btn { font-size: 10px; padding: 4px 8px; }
       .invite-btn { font-size: 10px; padding: 4px 8px; }
       .online-count { font-size: 11px; }
-      .my-stats { font-size: 10px; }
+      .my-stats { font-size: 10px; padding: 3px 8px; }
+      .my-custom-status { font-size: 10px; }
+      .link-btn { font-size: 10px; padding: 3px 6px; }
+      .status-input-box { width: 280px; }
 
       /* Contact cards: compact buttons */
       .contact-card { padding: 10px 10px; gap: 10px; }
@@ -1035,12 +1120,15 @@
     /* Tiny screens (iPhone SE, etc.) */
     @media (max-width: 360px) {
       .login-form-row { width: 260px; }
-      .login-btn, .x-login-btn, .login-divider { width: 260px; }
+      .login-btn, .x-login-btn, .wallet-login-btn, .login-divider { width: 260px; }
       .login-title { font-size: 24px; }
       .contact-card { padding: 8px 8px; gap: 8px; }
       .avatar { width: 34px; height: 34px; }
       .poke-btn { display: none; } /* hide poke on very small screens */
       .stream-chat { width: calc(100vw - 24px); left: 12px; }
+      .my-stats { gap: 4px; padding: 3px 6px; font-size: 9px; }
+      .info-right { gap: 4px; }
+      .wallet-handle { display: none; } /* too long for tiny screens */
     }
   </style>
 </head>
@@ -1113,7 +1201,11 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
       Sign in with X
     </button>
-    <div style="margin-top:24px;font-size:12px;color:#444;">built by <a href="https://x.com/z0r0zzz" target="_blank" rel="noopener" style="color:#666;text-decoration:none;font-family:var(--font-mono);font-weight:700;">z0r0z</a> who hates calls so much</div>
+    <button class="wallet-login-btn" id="wallet-login-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 100 4h4v-4h-4z"/></svg>
+      Sign in with Wallet
+    </button>
+    <div style="margin-top:24px;font-size:12px;color:#444;display:flex;align-items:center;gap:10px;">built by <a href="https://x.com/z0r0zzz" target="_blank" rel="noopener" style="color:#666;text-decoration:none;font-family:var(--font-mono);font-weight:700;">z0r0z</a> who hates calls so much <a href="https://github.com/z0r0z/minimeet" target="_blank" rel="noopener" title="GitHub" style="color:#555;display:flex;transition:color 0.2s;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></a></div>
   </div>
 
   <!-- ══════════════ CONTACTS SCREEN ══════════════ -->
@@ -1137,21 +1229,26 @@
     </div>
 
     <div class="info-bar">
-      <div class="my-info">
-        <div class="pfp-circle my-pfp" id="my-pfp" title="Change profile picture"></div>
-        <div class="my-name"><span id="my-name-display"></span> · <a href="#" id="sign-out-link" class="sign-out-link">Sign out</a></div>
+      <div class="info-top">
+        <div class="my-info">
+          <div class="pfp-circle my-pfp" id="my-pfp" title="Change profile picture"></div>
+          <div>
+            <div class="my-name"><span id="my-name-display"></span> · <a href="#" id="sign-out-link" class="sign-out-link">Sign out</a> <button class="link-btn" id="link-wallet-btn" style="display:none;" title="Link Wallet">+ wallet</button> <button class="link-btn" id="link-x-btn" style="display:none;" title="Link X account">+ X</button></div>
+            <div class="my-custom-status" id="my-custom-status" title="Click to set status"></div>
+          </div>
+        </div>
+        <div class="online-count">
+          <div class="online-dot"></div>
+          <span id="online-count-num">0</span> online
+        </div>
       </div>
       <div class="info-right">
+        <div class="my-stats" id="my-stats"></div>
         <button class="auto-meet-toggle" id="auto-meet-btn" title="Auto-call mutual contacts you haven't talked to recently">
           <div class="auto-meet-dot"></div>
           <span>Auto-Meet</span>
           <span class="auto-meet-cooldown" id="auto-meet-cooldown"></span>
         </button>
-        <div class="my-stats" id="my-stats"></div>
-        <div class="online-count">
-          <div class="online-dot"></div>
-          <span id="online-count-num">0</span> online
-        </div>
         <button class="invite-btn" id="invite-btn">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
           My Link
@@ -1191,7 +1288,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       Chat <span class="unread" id="chat-unread" style="display:none">0</span>
     </button>
-    <div class="chat-panel" id="chat-panel">
+    <div class="chat-panel active" id="chat-panel">
       <div class="chat-messages" id="chat-messages"></div>
       <div class="chat-input-row">
         <input type="text" class="chat-input" id="chat-input" placeholder="Say something..." maxlength="500" />
@@ -1348,6 +1445,18 @@
     </div>
   </div>
 
+  <!-- Status input overlay -->
+  <div class="status-input-overlay" id="status-overlay" onclick="if(event.target===this)closeStatusOverlay()">
+    <div class="status-input-box">
+      <div style="font-size:13px;margin-bottom:10px;font-weight:600;">Set your status</div>
+      <input type="text" id="status-input" placeholder="What are you up to?" maxlength="50" />
+      <div class="status-input-actions">
+        <button onclick="clearCustomStatus()">Clear</button>
+        <button class="primary" onclick="saveCustomStatus()">Save</button>
+      </div>
+    </div>
+  </div>
+
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
 // minimeet.cc Client — Socket.IO + WebRTC
@@ -1410,6 +1519,35 @@ function storeAvatar(dataUrl) {
   }
 }
 
+// ── Wallet name resolution ───────────────────────────────────────────────
+
+async function resolveWalletDisplayName(address) {
+  const RPCS = ['https://ethereum.publicnode.com', 'https://1rpc.io/eth'];
+  // Step 1: .wei reverse resolve
+  try {
+    const rpc = new ethers.JsonRpcProvider(RPCS[0], 1, { staticNetwork: true });
+    const ns = new ethers.Contract('0x0000000000696760E15f265e828DB644A0c242EB',
+      ['function reverseResolve(address) view returns (string)'], rpc);
+    const weiName = await ns.reverseResolve(address);
+    if (weiName) return weiName.toLowerCase();
+  } catch (e) { console.warn('wei resolve failed:', e); }
+  // Step 2: ENS .eth reverse resolve
+  try {
+    const rpc = new ethers.JsonRpcProvider(RPCS[0], 1, { staticNetwork: true });
+    const ensName = await rpc.lookupAddress(address);
+    if (ensName) return ensName;
+  } catch (e) { console.warn('ENS resolve failed:', e); }
+  // Step 3: truncated address
+  return address.slice(0, 6) + '...' + address.slice(-4);
+}
+
+function updateLinkButtons() {
+  const linkWalletBtn = document.getElementById('link-wallet-btn');
+  const linkXBtn = document.getElementById('link-x-btn');
+  if (linkWalletBtn) linkWalletBtn.style.display = (!myWalletAddress && myUserId) ? '' : 'none';
+  if (linkXBtn) linkXBtn.style.display = (!myXUsername && myUserId) ? '' : 'none';
+}
+
 // ── Audio ────────────────────────────────────────────────────────────────
 
 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1456,6 +1594,39 @@ function playNotifSound() {
   } catch {}
 }
 
+function playDMSound() {
+  try {
+    const ctx = new AudioCtx();
+    // Two-tone pop: short high then low
+    const o1 = ctx.createOscillator(), g1 = ctx.createGain();
+    o1.type = "sine"; o1.frequency.value = 1200;
+    g1.gain.setValueAtTime(0.08, ctx.currentTime);
+    g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    o1.connect(g1); g1.connect(ctx.destination);
+    o1.start(); o1.stop(ctx.currentTime + 0.08);
+    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    o2.type = "sine"; o2.frequency.value = 800;
+    g2.gain.setValueAtTime(0.08, ctx.currentTime + 0.1);
+    g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    o2.connect(g2); g2.connect(ctx.destination);
+    o2.start(ctx.currentTime + 0.1); o2.stop(ctx.currentTime + 0.2);
+    setTimeout(() => ctx.close().catch(() => {}), 300);
+  } catch {}
+}
+
+function playSendSound() {
+  try {
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = "sine"; osc.frequency.value = 600;
+    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.1);
+    setTimeout(() => ctx.close().catch(() => {}), 150);
+  } catch {}
+}
+
 // ── State ────────────────────────────────────────────────────────────────
 
 let socket = null;
@@ -1464,6 +1635,8 @@ let myName = "";
 let myAvatar = null;
 let myStats = null;
 let myXUsername = null;
+let myWalletAddress = null;
+let myCustomStatus = null;
 let myContacts = []; // lowercase names of saved contacts
 let callTarget = null; // username from ?call= param
 let callTargetAutoDialed = false;
@@ -1489,6 +1662,56 @@ let streamLocalStream = null;
 
 const $ = (sel) => document.querySelector(sel);
 const incomingOverlay = $("#incoming-overlay");
+
+// ── Idle detection ──────────────────────────────────────────────────────
+
+const IDLE_TIMEOUT_MS = 120_000; // 2 min
+let idleTimer = null;
+let isIdle = false;
+
+function resetIdleTimer() {
+  if (isIdle && socket) {
+    isIdle = false;
+    socket.emit("set-status", { status: "online" });
+  }
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (socket && myUserId) {
+      isIdle = true;
+      socket.emit("set-status", { status: "idle" });
+    }
+  }, IDLE_TIMEOUT_MS);
+}
+
+["mousemove", "keydown", "click", "touchstart", "scroll"].forEach(evt => {
+  document.addEventListener(evt, resetIdleTimer, { passive: true });
+});
+// Also reset on window focus
+window.addEventListener("focus", resetIdleTimer);
+
+// ── Custom status ───────────────────────────────────────────────────────
+
+window.closeStatusOverlay = function() {
+  document.getElementById("status-overlay").classList.remove("active");
+};
+window.saveCustomStatus = function() {
+  const val = document.getElementById("status-input").value.trim().slice(0, 50);
+  myCustomStatus = val || null;
+  if (socket) socket.emit("set-status", { customStatus: myCustomStatus });
+  updateCustomStatusDisplay();
+  closeStatusOverlay();
+};
+window.clearCustomStatus = function() {
+  myCustomStatus = null;
+  document.getElementById("status-input").value = "";
+  if (socket) socket.emit("set-status", { customStatus: null });
+  updateCustomStatusDisplay();
+  closeStatusOverlay();
+};
+function updateCustomStatusDisplay() {
+  const el = document.getElementById("my-custom-status");
+  if (el) el.textContent = myCustomStatus || "";
+}
 
 // ── Stats helpers ────────────────────────────────────────────────────────
 
@@ -1532,7 +1755,7 @@ function updateMyStats() {
   if (myStats.received > 0) { const rate = pickupRate(myStats); parts.push(`<div class="my-stats-item"><span>${rate}%</span> pickup</div>`); }
   if (myStats.streak >= 3) parts.push(`<div class="my-stats-item">🔥<span>${myStats.streak}</span></div>`);
   if (myStats.totalOnlineMs > 60_000) parts.push(`<div class="my-stats-item"><span>${formatOnlineTime(myStats.totalOnlineMs)}</span> online</div>`);
-  el.innerHTML = parts.join("");
+  el.innerHTML = parts.join('<span style="opacity:0.3">·</span>');
 }
 
 // ── Toast ────────────────────────────────────────────────────────────────
@@ -1595,12 +1818,21 @@ function stopFlashTitle() {
 // ── Camera ───────────────────────────────────────────────────────────────
 
 async function startCamera() {
+  if (localStream) return; // already started
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     $("#local-video").srcObject = localStream;
   } catch (e) {
     console.warn("Camera access denied:", e);
-    showToast("Camera/mic access denied", "error");
+    // Fallback: try audio-only
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      $("#local-video").srcObject = localStream;
+      showToast("Camera unavailable — audio only", "error");
+    } catch (e2) {
+      console.warn("Mic access denied:", e2);
+      showToast("Camera/mic access denied", "error");
+    }
   }
 }
 
@@ -1616,12 +1848,28 @@ function createPeerConnection() {
   peerConnection.ontrack = (event) => {
     const rv = $("#remote-video"); rv.srcObject = event.streams[0]; rv.style.display = "block";
     $("#remote-placeholder").style.display = "none";
+    rv.play().catch(() => {}); // ensure playback starts
   };
   peerConnection.onicecandidate = (event) => {
     if (event.candidate && currentCallId) socket.emit("webrtc-ice-candidate", { callId: currentCallId, candidate: event.candidate });
   };
   peerConnection.onconnectionstatechange = () => {
-    if (peerConnection.connectionState === "failed") showToast("Connection failed — try again", "error");
+    const state = peerConnection?.connectionState;
+    if (state === "connected") {
+      $("#call-status-label").textContent = "Connected";
+    } else if (state === "disconnected") {
+      $("#call-status-label").textContent = "Reconnecting...";
+      showToast("Connection unstable — reconnecting...", "error", 3000);
+    } else if (state === "failed") {
+      showToast("Connection failed — ending call", "error");
+      endCurrentCall();
+    }
+  };
+  peerConnection.oniceconnectionstatechange = () => {
+    if (peerConnection?.iceConnectionState === "failed") {
+      // Attempt ICE restart
+      peerConnection.restartIce();
+    }
   };
 }
 
@@ -1629,21 +1877,21 @@ async function createAndSendOffer() {
   createPeerConnection();
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  socket.emit("webrtc-offer", { callId: currentCallId, sdp: offer });
+  if (socket) socket.emit("webrtc-offer", { callId: currentCallId, sdp: offer });
 }
 
 async function handleOffer(sdp) {
   createPeerConnection();
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+  await peerConnection.setRemoteDescription(sdp);
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
   socket.emit("webrtc-answer", { callId: currentCallId, sdp: answer });
 }
 
-async function handleAnswer(sdp) { if (peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp)); }
+async function handleAnswer(sdp) { if (peerConnection) await peerConnection.setRemoteDescription(sdp); }
 
 async function handleIceCandidate(candidate) {
-  if (peerConnection) { try { await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); } catch {} }
+  if (peerConnection) { try { await peerConnection.addIceCandidate(candidate); } catch {} }
 }
 
 function closePeerConnection() { if (peerConnection) { peerConnection.close(); peerConnection = null; } }
@@ -1755,12 +2003,18 @@ async function handleStreamOffer(sdp) {
     const rv = $("#stream-remote-video");
     rv.srcObject = event.streams[0];
     rv.style.display = "block";
+    rv.play().catch(() => {});
   };
   pc.onicecandidate = (e) => {
     if (e.candidate && currentStreamId) socket.emit("stream-ice-candidate", { streamId: currentStreamId, candidate: e.candidate });
   };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "failed") {
+      showToast("Stream connection lost", "error");
+    }
+  };
   streamPeerConnections.set("streamer", pc);
-  await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+  await pc.setRemoteDescription(sdp);
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
   socket.emit("stream-answer", { streamId: currentStreamId, sdp: answer });
@@ -1768,7 +2022,7 @@ async function handleStreamOffer(sdp) {
 
 // ── Chat ─────────────────────────────────────────────────────────────────
 
-let chatOpen = false;
+let chatOpen = true;
 let chatUnread = 0;
 
 function formatChatTime(ts) {
@@ -1776,19 +2030,29 @@ function formatChatTime(ts) {
   return d.getHours().toString().padStart(2, "0") + ":" + d.getMinutes().toString().padStart(2, "0");
 }
 
+function chatDisplayName(msg) {
+  if (msg.userId === myUserId) return "You";
+  // Priority: name (which for wallet users is already wei/ens/truncated) + wallet/x suffix
+  let display = escapeHtml(msg.name);
+  if (msg.xUsername) display += ` <span class="x-handle">@${escapeHtml(msg.xUsername)}</span>`;
+  if (msg.walletAddress && !msg.name.includes("...") && !msg.name.endsWith(".wei") && !msg.name.endsWith(".eth")) {
+    display += ` <span class="wallet-handle">${msg.walletAddress.slice(0,6)}...${msg.walletAddress.slice(-4)}</span>`;
+  }
+  return display;
+}
+
 function renderChatMsg(msg, container) {
   const color = getColor(msg.name);
   const initials = getInitials(msg.name);
   const bg = msg.avatar ? `background-image:url(${msg.avatar})` : `background:${color}`;
   const inner = msg.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#fff">${initials}</span>`;
-  const isMine = msg.userId === myUserId;
 
   const el = document.createElement("div");
   el.className = "chat-msg";
   el.innerHTML = `
     <div class="chat-msg-pfp" style="${bg}">${inner}</div>
     <div class="chat-msg-body">
-      <span class="chat-msg-name" style="color:${color}">${isMine ? "You" : escapeHtml(msg.name)}</span>
+      <span class="chat-msg-name" style="color:${color}">${chatDisplayName(msg)}</span>
       <span class="chat-msg-time">${formatChatTime(msg.ts)}</span>
       <div class="chat-msg-text">${escapeHtml(msg.text)}</div>
     </div>`;
@@ -1987,6 +2251,39 @@ $("#pfp-change-input").addEventListener("change", async (e) => {
 
 // ── Render Contacts ──────────────────────────────────────────────────────
 
+// ── Contact metadata cache (persists across sessions) ────────────────────
+
+function cacheUserMeta(user) {
+  try {
+    const key = (user.xUsername ? "@" + user.xUsername.toLowerCase() : user.name.toLowerCase().trim());
+    const meta = {
+      name: user.name,
+      avatar: user.avatar || null,
+      xUsername: user.xUsername || null,
+      walletAddress: user.walletAddress || null,
+      stats: user.stats || null,
+    };
+    const cache = JSON.parse(localStorage.getItem("om_contact_cache") || "{}");
+    cache[key] = meta;
+    // Also cache by plain name for non-x-handle lookups
+    if (user.xUsername) cache[user.name.toLowerCase().trim()] = meta;
+    localStorage.setItem("om_contact_cache", JSON.stringify(cache));
+  } catch (e) {}
+}
+
+function getCachedMeta(contactName) {
+  try {
+    const cache = JSON.parse(localStorage.getItem("om_contact_cache") || "{}");
+    return cache[contactName] || null;
+  } catch { return null; }
+}
+
+function cacheAllOnlineUsers() {
+  for (const u of users) {
+    if (u.userId !== myUserId) cacheUserMeta(u);
+  }
+}
+
 function isSaved(name, xUsername) {
   const lower = name.toLowerCase().trim();
   if (myContacts.includes(lower)) return true;
@@ -2014,15 +2311,22 @@ function renderContactCard(user, i, isOffline) {
   const inner = avatarInner(user.avatar, initials, 13);
   const badge = isOffline ? "" : pickupBadgeHTML(user.stats);
   const handle = user.xUsername ? `<span class="x-handle">@${escapeHtml(user.xUsername)}</span>` : "";
+  const contactIdle = !isOffline && user.status === "idle";
   const meetsCount = user.stats ? (user.stats.totalMeets || 0) : 0;
-  const statsLine = meetsCount > 0
-    ? `${meetsCount} meet${meetsCount !== 1 ? "s" : ""}${user.stats.totalOnlineMs > 60_000 ? " · " + formatOnlineTime(user.stats.totalOnlineMs) + " online" : ""}`
-    : isOffline ? "Offline" : "New here";
+  const customStatusText = user.customStatus ? escapeHtml(user.customStatus) : "";
+  let statsLine;
+  if (customStatusText) {
+    statsLine = customStatusText;
+  } else if (meetsCount > 0) {
+    statsLine = `${contactIdle ? "Away · " : ""}${meetsCount} meet${meetsCount !== 1 ? "s" : ""}${user.stats.totalOnlineMs > 60_000 ? " · " + formatOnlineTime(user.stats.totalOnlineMs) + " online" : ""}`;
+  } else {
+    statsLine = isOffline ? "Offline" : contactIdle ? "Away" : "New here";
+  }
   const saved = isSaved(user.name, user.xUsername);
   const starSvg = saved
     ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="#E8A83C" stroke="#E8A83C" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
     : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
-  const dotColor = isOffline ? "#555" : "#4ADE80";
+  const dotColor = isOffline ? "#555" : contactIdle ? "#E8A83C" : "#4ADE80";
   const cardClass = isOffline ? "contact-card offline-saved" : "contact-card";
   const onclick = isOffline ? "" : `onclick="callUser('${user.userId}','${user.name.replace(/'/g, "\\'")}', ${user.avatar ? "'" + user.avatar.replace(/'/g, "\\'") + "'" : "null"})"`;
 
@@ -2133,10 +2437,15 @@ function renderContacts(filter = "") {
   });
   const savedOffline = savedOfflineNames.map(contactName => {
     const isXHandle = contactName.startsWith("@");
-    const displayName = isXHandle ? contactName : contactName.charAt(0).toUpperCase() + contactName.slice(1);
+    const cached = getCachedMeta(contactName);
+    const displayName = cached ? cached.name : (isXHandle ? contactName : contactName.charAt(0).toUpperCase() + contactName.slice(1));
     return {
-      name: displayName, avatar: null, stats: null,
-      xUsername: isXHandle ? contactName.slice(1) : null, userId: null,
+      name: displayName,
+      avatar: cached?.avatar || null,
+      stats: cached?.stats || null,
+      xUsername: cached?.xUsername || (isXHandle ? contactName.slice(1) : null),
+      walletAddress: cached?.walletAddress || null,
+      userId: null,
     };
   });
 
@@ -2309,21 +2618,24 @@ function connectSocket() {
     const savedUserId = localStorage.getItem("om_userId");
     const savedName = localStorage.getItem("om_name");
     const savedX = localStorage.getItem("om_xUsername") || myXUsername || null;
+    const savedWallet = localStorage.getItem("om_walletAddress") || myWalletAddress || null;
     if (savedUserId && savedName) {
-      socket.emit("register", { name: savedName, reconnectUserId: savedUserId, avatar: myAvatar, xUsername: savedX, sessionToken: localStorage.getItem("om_sessionToken") });
+      socket.emit("register", { name: savedName, reconnectUserId: savedUserId, avatar: myAvatar, xUsername: savedX, walletAddress: savedWallet, sessionToken: localStorage.getItem("om_sessionToken") });
     } else if (myName) {
-      socket.emit("register", { name: myName, avatar: myAvatar, xUsername: myXUsername, sessionToken: localStorage.getItem("om_sessionToken") });
+      socket.emit("register", { name: myName, avatar: myAvatar, xUsername: myXUsername, walletAddress: myWalletAddress, sessionToken: localStorage.getItem("om_sessionToken") });
     }
   });
 
-  socket.on("registered", ({ userId, name, reconnected, avatar: serverAvatar, stats, xUsername, autoMeet, cooldownHours, sessionToken }) => {
+  socket.on("registered", ({ userId, name, reconnected, avatar: serverAvatar, stats, xUsername, walletAddress, autoMeet, cooldownHours, sessionToken }) => {
     myUserId = userId;
     myName = name;
     myStats = stats || null;
     myXUsername = xUsername || null;
+    myWalletAddress = walletAddress || null;
     localStorage.setItem("om_userId", userId);
     localStorage.setItem("om_name", name);
     if (xUsername) localStorage.setItem("om_xUsername", xUsername);
+    if (walletAddress) localStorage.setItem("om_walletAddress", walletAddress);
     if (sessionToken) localStorage.setItem("om_sessionToken", sessionToken);
 
     // Sync avatar: if server has one and we don't locally, adopt it
@@ -2332,11 +2644,13 @@ function connectSocket() {
       storeAvatar(serverAvatar);
     }
 
-    $("#my-name-display").innerHTML = xUsername
-      ? `${escapeHtml(name)} <span class="x-handle">@${escapeHtml(xUsername)}</span>`
-      : escapeHtml(name);
+    let nameHtml = escapeHtml(name);
+    if (xUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(xUsername)}</span>`;
+    if (walletAddress) nameHtml += ` <span class="wallet-handle">${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}</span>`;
+    $("#my-name-display").innerHTML = nameHtml;
     updateMyPfp();
     updateMyStats();
+    updateLinkButtons();
     // Restore auto-meet state
     autoMeetEnabled = !!autoMeet;
     autoMeetCooldownHours = cooldownHours || 24;
@@ -2344,6 +2658,7 @@ function connectSocket() {
     // Fetch saved contacts
     socket.emit("get-contacts");
     socket.emit("chat-history");
+    resetIdleTimer();
     showScreen("contacts-screen");
     if (reconnected) {
       showToast("Reconnected!", "success");
@@ -2352,6 +2667,12 @@ function connectSocket() {
     if (callTarget && !callTargetAutoDialed) {
       showCallLinkBanner(callTarget);
     }
+  });
+
+  socket.on("wallet-linked", ({ walletAddress }) => {
+    myWalletAddress = walletAddress;
+    if (walletAddress) localStorage.setItem("om_walletAddress", walletAddress);
+    updateLinkButtons();
   });
 
   socket.on("register-error", ({ message }) => {
@@ -2363,6 +2684,7 @@ function connectSocket() {
 
   socket.on("user-list", (list) => {
     users = list;
+    cacheAllOnlineUsers();
     renderContacts($("#search-input").value);
     // Update own stats from the broadcast
     const me = list.find(u => u.userId === myUserId);
@@ -2536,7 +2858,7 @@ function connectSocket() {
       badge.classList.add("active");
     }
     // Notification sound
-    playNotifSound();
+    playDMSound();
   });
 
   socket.on("chat-dm-sent", (msg) => {
@@ -2547,6 +2869,7 @@ function connectSocket() {
     if (dmTargetUserId === peerId) {
       appendDMMsg(entry);
     }
+    playSendSound();
   });
 
   socket.on("poke", ({ fromUserId, fromName, fromAvatar }) => {
@@ -2627,16 +2950,16 @@ function connectSocket() {
   socket.on("stream-answer", async ({ streamId, viewerId, sdp }) => {
     if (!isStreamer) return;
     const pc = streamPeerConnections.get(viewerId);
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    if (pc) await pc.setRemoteDescription(sdp);
   });
 
   socket.on("stream-ice-candidate", async ({ streamId, viewerId, candidate }) => {
     if (isStreamer && viewerId) {
       const pc = streamPeerConnections.get(viewerId);
-      if (pc) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {} }
+      if (pc) { try { await pc.addIceCandidate(candidate); } catch {} }
     } else if (!isStreamer) {
       const pc = streamPeerConnections.get("streamer");
-      if (pc) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {} }
+      if (pc) { try { await pc.addIceCandidate(candidate); } catch {} }
     }
   });
 
@@ -2662,6 +2985,66 @@ $("#name-input").addEventListener("input", () => {
   $("#login-error").textContent = "";
   $("#name-input").classList.remove("error");
   $("#join-btn").disabled = false;
+});
+
+// Wallet login
+$("#wallet-login-btn").addEventListener("click", () => {
+  // Ensure wallet DOM is injected (hidden top-right button + modal)
+  if (!document.getElementById('walletBtn')) {
+    walletInit({ appName: 'minimeet.cc' });
+  }
+  document.getElementById('walletBtn').style.display = 'none';
+
+  // Set connect callback for login flow
+  setWalletOnConnect([async () => {
+    myWalletAddress = window._connectedAddress;
+    localStorage.setItem("om_walletAddress", myWalletAddress);
+    // Resolve display name: .wei → .eth → truncated address
+    myName = await resolveWalletDisplayName(myWalletAddress);
+    localStorage.setItem("om_last_name", myName);
+    connectSocket();
+  }]);
+
+  showWalletModal();
+});
+
+// Link wallet (for X-authenticated users)
+$("#link-wallet-btn").addEventListener("click", () => {
+  if (!document.getElementById('walletBtn')) {
+    walletInit({ appName: 'minimeet.cc' });
+  }
+  document.getElementById('walletBtn').style.display = 'none';
+
+  setWalletOnConnect([() => {
+    myWalletAddress = window._connectedAddress;
+    localStorage.setItem("om_walletAddress", myWalletAddress);
+    if (socket) socket.emit("link-wallet", { walletAddress: myWalletAddress });
+    showToast("Wallet linked!", "success");
+    updateLinkButtons();
+    // Update display name
+    let nameHtml = escapeHtml(myName);
+    if (myXUsername) nameHtml += ` <span class="x-handle">@${escapeHtml(myXUsername)}</span>`;
+    nameHtml += ` <span class="wallet-handle">${myWalletAddress.slice(0,6)}...${myWalletAddress.slice(-4)}</span>`;
+    $("#my-name-display").innerHTML = nameHtml;
+  }]);
+
+  showWalletModal();
+});
+
+// Link X (for wallet-authenticated users)
+$("#link-x-btn").addEventListener("click", () => {
+  window.location.href = '/auth/x';
+});
+
+// Custom status
+$("#my-custom-status").addEventListener("click", () => {
+  document.getElementById("status-input").value = myCustomStatus || "";
+  document.getElementById("status-overlay").classList.add("active");
+  document.getElementById("status-input").focus();
+});
+$("#status-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveCustomStatus();
+  if (e.key === "Escape") closeStatusOverlay();
 });
 
 // Search
@@ -2782,13 +3165,17 @@ $("#sign-out-link").addEventListener("click", (e) => {
   localStorage.removeItem("om_userId");
   localStorage.removeItem("om_name");
   localStorage.removeItem("om_xUsername");
+  localStorage.removeItem("om_walletAddress");
   localStorage.removeItem("om_last_name");
   localStorage.removeItem("om_avatar");
   localStorage.removeItem("om_callTarget");
+  localStorage.removeItem("om_contact_cache");
+  // Disconnect wallet if connected
+  if (typeof disconnectWallet === 'function') try { disconnectWallet(); } catch(e) {}
   // Disconnect socket
   if (socket) socket.disconnect();
   // Reset state
-  myUserId = null; myName = ""; myAvatar = null; myStats = null; myXUsername = null;
+  myUserId = null; myName = ""; myAvatar = null; myStats = null; myXUsername = null; myWalletAddress = null;
   // Back to login
   showScreen("login-screen");
   showToast("Signed out", "success");
@@ -2945,6 +3332,8 @@ window.addEventListener("load", async () => {
   const savedName = localStorage.getItem("om_name");
   const savedX = localStorage.getItem("om_xUsername");
   if (savedX) myXUsername = savedX;
+  const savedWalletAddr = localStorage.getItem("om_walletAddress");
+  if (savedWalletAddr) myWalletAddress = savedWalletAddr;
 
   if (savedUserId && savedName) {
     myName = savedName;

@@ -400,6 +400,7 @@ async function dbSavePublicMsg(msg) {
     try {
       await supabase.from("public_messages").insert({
         id: msg.id, name: msg.name, avatar: msg.avatar,
+        x_username: msg.xUsername || null, wallet_address: msg.walletAddress || null,
         text: msg.text, created_at: new Date(msg.ts).toISOString(),
       });
     } catch (e) { console.warn("Public msg write error:", e.message); }
@@ -420,6 +421,7 @@ async function dbLoadPublicMsgs(limit = 50) {
         .select("*").order("created_at", { ascending: false }).limit(limit);
       if (data) return data.reverse().map(d => ({
         id: d.id, name: d.name, avatar: d.avatar,
+        xUsername: d.x_username || null, walletAddress: d.wallet_address || null,
         text: d.text, ts: new Date(d.created_at).getTime(),
       }));
     } catch (e) { console.warn("Public msg read error:", e.message); }
@@ -519,6 +521,35 @@ async function dbSetSessionToken(name, tokenHash) {
   jsonSet("session_tokens", key, tokenHash);
 }
 
+// ─── Wallet address persistence ──────────────────────────────────────────────
+
+async function dbGetWallet(name) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("wallet_addresses").select("wallet_address").eq("name", key).single();
+      if (data) return data.wallet_address;
+    } catch {}
+    return null;
+  }
+  return jsonGet("wallet_addresses", key);
+}
+
+async function dbSetWallet(name, walletAddress) {
+  const key = name.toLowerCase().trim();
+  if (supabase) {
+    try {
+      if (walletAddress) {
+        await supabase.from("wallet_addresses").upsert({ name: key, wallet_address: walletAddress, updated_at: new Date().toISOString() });
+      } else {
+        await supabase.from("wallet_addresses").delete().eq("name", key);
+      }
+    } catch (e) { console.warn("Wallet write error:", e.message); }
+    return;
+  }
+  jsonSet("wallet_addresses", key, walletAddress);
+}
+
 // ─── Rate limiting ───────────────────────────────────────────────────────────
 
 const rateLimitBuckets = new Map(); // socketId -> { event -> { count, resetAt } }
@@ -593,7 +624,8 @@ function broadcastUserList() {
       users.push({
         userId, name: data.name, status: data.status,
         avatar: data.avatar || null, stats: data.stats || null,
-        xUsername: data.xUsername || null, autoMeet: data.autoMeet || false,
+        xUsername: data.xUsername || null, walletAddress: data.walletAddress || null,
+        customStatus: data.customStatus || null, autoMeet: data.autoMeet || false,
         streaming, inCallWith,
       });
     }
@@ -693,11 +725,12 @@ async function refreshUserStats(userId) {
 
 io.on("connection", (socket) => {
 
-  socket.on("register", async ({ name, reconnectUserId, avatar, xUsername, sessionToken }) => {
+  socket.on("register", async ({ name, reconnectUserId, avatar, xUsername, walletAddress, sessionToken }) => {
     if (!name || typeof name !== "string") return;
     const trimmedName = name.trim().slice(0, MAX_NAME_LENGTH);
     if (!trimmedName) { socket.emit("register-error", { message: "Name cannot be empty" }); return; }
     const safeAvatar = (avatar && typeof avatar === "string" && avatar.length <= MAX_AVATAR_BYTES) ? avatar : null;
+    const safeWallet = (walletAddress && typeof walletAddress === "string" && /^0x[0-9a-fA-F]{40}$/.test(walletAddress)) ? walletAddress.toLowerCase() : null;
 
     if (reconnectUserId && onlineUsers.has(reconnectUserId)) {
       const eu = onlineUsers.get(reconnectUserId);
@@ -705,6 +738,7 @@ io.on("connection", (socket) => {
       if (disconnectTimers.has(reconnectUserId)) { clearTimeout(disconnectTimers.get(reconnectUserId)); disconnectTimers.delete(reconnectUserId); }
       eu.socketId = socket.id; eu.disconnectedAt = null; eu.status = "online"; eu.connectedAt = Date.now();
       if (safeAvatar) { eu.avatar = safeAvatar; await dbSetAvatar(eu.name, safeAvatar); }
+      if (safeWallet && !eu.walletAddress) { eu.walletAddress = safeWallet; await dbSetWallet(eu.name, safeWallet); }
       socket.userId = reconnectUserId;
       const resolvedAvatar = eu.avatar || await dbGetAvatar(eu.name);
       eu.avatar = resolvedAvatar;
@@ -712,7 +746,7 @@ io.on("connection", (socket) => {
       const prefs = await dbGetPrefs(eu.name);
       eu.autoMeet = prefs.autoMeet;
       eu.cooldownHours = prefs.cooldownHours;
-      socket.emit("registered", { userId: reconnectUserId, name: eu.name, reconnected: true, avatar: resolvedAvatar, stats: eu.stats, xUsername: eu.xUsername || null, autoMeet: eu.autoMeet, cooldownHours: eu.cooldownHours });
+      socket.emit("registered", { userId: reconnectUserId, name: eu.name, reconnected: true, avatar: resolvedAvatar, stats: eu.stats, xUsername: eu.xUsername || null, walletAddress: eu.walletAddress || null, autoMeet: eu.autoMeet, cooldownHours: eu.cooldownHours });
       broadcastUserList();
       return;
     }
@@ -722,8 +756,18 @@ io.on("connection", (socket) => {
       return;
     }
 
+    // Wallet-authenticated: verify wallet owns the name
+    if (safeWallet) {
+      const existingWallet = await dbGetWallet(trimmedName);
+      if (existingWallet && existingWallet !== safeWallet) {
+        socket.emit("register-error", { message: `"${trimmedName}" is claimed by a different wallet.` });
+        return;
+      }
+    }
+
     // Guest session token: if this name has a stored token, verify it
-    if (!xUsername) {
+    // Skip for X-authenticated or wallet-authenticated users
+    if (!xUsername && !safeWallet) {
       const storedHash = await dbGetSessionToken(trimmedName);
       if (storedHash) {
         if (!sessionToken || hashToken(sessionToken) !== storedHash) {
@@ -741,10 +785,14 @@ io.on("connection", (socket) => {
     const stats = await dbGetStats(trimmedName);
     const prefs = await dbGetPrefs(trimmedName);
 
+    const storedWallet = safeWallet || await dbGetWallet(trimmedName);
+    if (safeWallet && safeWallet !== storedWallet) await dbSetWallet(trimmedName, safeWallet);
+
     onlineUsers.set(userId, {
       socketId: socket.id, name: trimmedName, status: "online",
       avatar: resolvedAvatar, stats, disconnectedAt: null, connectedAt: Date.now(),
-      xUsername: xUsername || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours,
+      xUsername: xUsername || null, walletAddress: storedWallet || null,
+      autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours,
     });
     takenNames.set(trimmedName.toLowerCase(), userId);
 
@@ -755,9 +803,9 @@ io.on("connection", (socket) => {
       await dbSetSessionToken(trimmedName, hashToken(newSessionToken));
     }
 
-    socket.emit("registered", { userId, name: trimmedName, reconnected: false, avatar: resolvedAvatar, stats, xUsername: xUsername || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours, sessionToken: newSessionToken });
+    socket.emit("registered", { userId, name: trimmedName, reconnected: false, avatar: resolvedAvatar, stats, xUsername: xUsername || null, walletAddress: storedWallet || null, autoMeet: prefs.autoMeet, cooldownHours: prefs.cooldownHours, sessionToken: newSessionToken });
     broadcastUserList();
-    console.log(`✅ ${trimmedName}${xUsername ? " (@" + xUsername + ")" : ""} registered as ${userId}`);
+    console.log(`✅ ${trimmedName}${xUsername ? " (@" + xUsername + ")" : ""}${storedWallet ? " [" + storedWallet.slice(0,6) + "...]" : ""} registered as ${userId}`);
   });
 
   socket.on("update-avatar", async ({ avatar }) => {
@@ -766,6 +814,31 @@ io.on("connection", (socket) => {
     if (avatar && (typeof avatar !== "string" || avatar.length > MAX_AVATAR_BYTES)) return;
     userData.avatar = avatar || null;
     await dbSetAvatar(userData.name, avatar);
+    broadcastUserList();
+  });
+
+  socket.on("set-status", ({ status, customStatus }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    // Update presence status
+    if (status === "online" || status === "idle") {
+      userData.status = status;
+    }
+    // Update custom status text (like Discord)
+    if (customStatus !== undefined) {
+      userData.customStatus = (typeof customStatus === "string") ? customStatus.trim().slice(0, 50) : null;
+    }
+    broadcastUserList();
+  });
+
+  socket.on("link-wallet", async ({ walletAddress }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const safeWallet = (walletAddress && typeof walletAddress === "string" && /^0x[0-9a-fA-F]{40}$/.test(walletAddress)) ? walletAddress.toLowerCase() : null;
+    if (!safeWallet) return;
+    userData.walletAddress = safeWallet;
+    await dbSetWallet(userData.name, safeWallet);
+    socket.emit("wallet-linked", { walletAddress: safeWallet });
     broadcastUserList();
   });
 
@@ -908,7 +981,7 @@ io.on("connection", (socket) => {
     const userData = onlineUsers.get(userId); if (!userData) return;
     const trimmed = (text || "").trim().slice(0, 500);
     if (!trimmed) return;
-    const msg = { id: uuidv4().slice(0, 10), userId, name: userData.name, avatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+    const msg = { id: uuidv4().slice(0, 10), userId, name: userData.name, avatar: userData.avatar || null, xUsername: userData.xUsername || null, walletAddress: userData.walletAddress || null, text: trimmed, ts: Date.now() };
     publicChat.push(msg);
     if (publicChat.length > MAX_CHAT_HISTORY) publicChat.shift();
     io.emit("chat-public", msg);
@@ -928,7 +1001,7 @@ io.on("connection", (socket) => {
     if (stream.streamerId !== userId && !stream.viewers.has(userId)) return;
     const trimmed = (text || "").trim().slice(0, 500);
     if (!trimmed) return;
-    const msg = { id: uuidv4().slice(0, 10), userId, name: userData.name, avatar: userData.avatar || null, text: trimmed, ts: Date.now() };
+    const msg = { id: uuidv4().slice(0, 10), userId, name: userData.name, avatar: userData.avatar || null, xUsername: userData.xUsername || null, walletAddress: userData.walletAddress || null, text: trimmed, ts: Date.now() };
     if (!streamChats.has(streamId)) streamChats.set(streamId, []);
     const chat = streamChats.get(streamId);
     chat.push(msg);
@@ -995,7 +1068,7 @@ io.on("connection", (socket) => {
 
     activeCalls.set(callId, { callerId, calleeId, startedAt: null, timerId: null, ringTimerId });
     const cs = getSocketByUserId(calleeId);
-    if (cs) cs.emit("incoming-call", { callId, callerId, callerName: caller.name, callerAvatar: caller.avatar || null, callerXUsername: caller.xUsername || null });
+    if (cs) cs.emit("incoming-call", { callId, callerId, callerName: caller.name, callerAvatar: caller.avatar || null, callerXUsername: caller.xUsername || null, callerWalletAddress: caller.walletAddress || null });
     socket.emit("call-ringing", { callId, calleeId, calleeName: callee.name, calleeAvatar: callee.avatar || null });
   });
 
@@ -1151,7 +1224,7 @@ setInterval(async () => {
       const s1 = getSocketByUserId(caller.userId);
       const s2 = getSocketByUserId(callee.userId);
       if (s1) s1.emit("auto-meet-call", { callId, remoteUserId: callee.userId, remoteName: calleeData.name, remoteAvatar: calleeData.avatar || null });
-      if (s2) s2.emit("incoming-call", { callId, callerId: caller.userId, callerName: callerData.name, callerAvatar: callerData.avatar || null, callerXUsername: callerData.xUsername || null, autoMeet: true });
+      if (s2) s2.emit("incoming-call", { callId, callerId: caller.userId, callerName: callerData.name, callerAvatar: callerData.avatar || null, callerXUsername: callerData.xUsername || null, callerWalletAddress: callerData.walletAddress || null, autoMeet: true });
 
       console.log(`🔄 Auto-Meet: ${caller.name} ↔ ${callee.name}`);
       break; // only one match per candidate per cycle
