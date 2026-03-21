@@ -2289,6 +2289,7 @@ let myWalletAddress = null;
 let myCustomStatus = null;
 let myWalletSignature = null;
 let myWalletNonce = null;
+let registerRetried = false;
 let myContacts = []; // lowercase names of saved contacts
 let callTarget = null; // username from ?call= param
 let callTargetAutoDialed = false;
@@ -3403,18 +3404,24 @@ function cleanup() {
 // ── Socket.IO ────────────────────────────────────────────────────────────
 
 function connectSocket() {
-  // Prevent duplicate connections
+  // If socket exists and is connected or reconnecting, don't create a new one
   if (socket) {
     if (socket.connected) return;
+    // If socket.io is already trying to reconnect, let it handle it
+    if (socket.io && (socket.io.readyState === "opening" || socket.io._reconnecting)) return;
     socket.removeAllListeners();
     socket.disconnect();
   }
   socket = io(SERVER_URL, {
-    reconnection: true, reconnectionAttempts: 10,
-    reconnectionDelay: 1000, reconnectionDelayMax: 5000,
+    reconnection: true, reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000, reconnectionDelayMax: 10000,
   });
 
+  let registerPending = false;
   socket.on("connect", () => {
+    if (registerPending) return; // prevent double-register on rapid reconnects
+    registerPending = true;
+    setTimeout(() => { registerPending = false; }, 2000); // reset after 2s
     const savedUserId = localStorage.getItem("om_userId");
     const savedName = localStorage.getItem("om_name");
     const savedX = localStorage.getItem("om_xUsername") || myXUsername || null;
@@ -3512,7 +3519,6 @@ function connectSocket() {
     showToast(`📬 ${count} message${count !== 1 ? "s" : ""} sent to ${addr} claimed!`, "success", 5000);
   });
 
-  let registerRetried = false;
   socket.on("register-error", ({ message }) => {
     const savedUserId = localStorage.getItem("om_userId");
     const savedName = localStorage.getItem("om_name");
@@ -3520,11 +3526,13 @@ function connectSocket() {
 
     // If name conflict on reconnect, retry once without reconnectUserId
     // (server may have restarted and old userId is gone, but name + sessionToken still valid)
-    if (isTaken && savedUserId && savedName && !registerRetried) {
+    // Only retry if we have a session token (returning user) — don't retry fresh logins
+    const hasSession = localStorage.getItem("om_sessionToken");
+    if (isTaken && savedUserId && savedName && hasSession && !registerRetried) {
       registerRetried = true;
       const savedX = localStorage.getItem("om_xUsername") || myXUsername || null;
       const savedWallet = localStorage.getItem("om_walletAddress") || myWalletAddress || null;
-      socket.emit("register", { name: savedName, avatar: myAvatar, xUsername: savedX, walletAddress: savedWallet, sessionToken: localStorage.getItem("om_sessionToken") });
+      socket.emit("register", { name: savedName, avatar: myAvatar, xUsername: savedX, walletAddress: savedWallet, sessionToken: hasSession });
       return;
     }
 
@@ -3984,8 +3992,16 @@ function connectSocket() {
     }
   });
 
-  socket.on("disconnect", () => {
-    showToast("Connection lost — reconnecting...", "error", 5000);
+  socket.on("disconnect", (reason) => {
+    // Only show toast for unexpected disconnects, not normal page navigation
+    if (reason !== "io client disconnect") {
+      // Delay the toast — socket.io often reconnects within 1-2 seconds
+      setTimeout(() => {
+        if (socket && !socket.connected) {
+          showToast("Connection lost — reconnecting...", "error", 3000);
+        }
+      }, 2000);
+    }
   });
 }
 
@@ -4026,6 +4042,7 @@ $("#wallet-login-btn").addEventListener("click", () => {
       myWalletNonce = nonce;
       localStorage.setItem("om_walletAddress", myWalletAddress);
       // Resolve display name: .wei → .eth → truncated address
+      showToast("Resolving name...", "info", 2000);
       myName = await resolveWalletDisplayName(myWalletAddress);
       localStorage.setItem("om_last_name", myName);
       connectSocket();
@@ -5044,10 +5061,10 @@ window.addEventListener("load", async () => {
     // Hide login screen while reconnecting to avoid flash
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     connectSocket();
-    // If reconnect fails after 5s, show login
+    // If reconnect fails after 10s, show login
     setTimeout(() => {
       if (!myUserId) showScreen("login-screen");
-    }, 5000);
+    }, 10000);
   }
 
   // Pre-fill name if saved

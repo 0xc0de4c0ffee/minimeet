@@ -1365,8 +1365,30 @@ io.on("connection", (socket) => {
     }
 
     if (isNameTaken(trimmedName)) {
-      socket.emit("register-error", { message: `"${trimmedName}" is already taken. Try a different name.` });
-      return;
+      // Check if the user can reclaim this name via matching X username or session token
+      const existingUserId = takenNames.get(trimmedName.toLowerCase());
+      const existingUser = existingUserId ? onlineUsers.get(existingUserId) : null;
+      let canReclaim = false;
+      if (existingUser) {
+        // Same X username → same person
+        if (xUsername && existingUser.xUsername && xUsername.toLowerCase() === existingUser.xUsername.toLowerCase()) canReclaim = true;
+        // Same wallet → same person
+        if (safeWallet && existingUser.walletAddress && safeWallet === existingUser.walletAddress) canReclaim = true;
+        // Existing user is disconnected (in grace period) and session token matches
+        if (existingUser.disconnectedAt && sessionToken) {
+          const storedHash = await dbGetSessionToken(trimmedName);
+          if (storedHash && hashToken(sessionToken) === storedHash) canReclaim = true;
+        }
+      }
+      if (canReclaim && existingUser) {
+        // Take over the old connection
+        if (disconnectTimers.has(existingUserId)) { clearTimeout(disconnectTimers.get(existingUserId)); disconnectTimers.delete(existingUserId); }
+        onlineUsers.delete(existingUserId);
+        takenNames.delete(trimmedName.toLowerCase());
+      } else {
+        socket.emit("register-error", { message: `"${trimmedName}" is already taken. Try a different name.` });
+        return;
+      }
     }
 
     // Wallet-authenticated: verify wallet ownership
