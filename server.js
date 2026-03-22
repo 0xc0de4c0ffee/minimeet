@@ -652,9 +652,10 @@ async function dbCreatePost(author, text, parentId = null, image = null) {
       if (image) row.image = image;
       await supabase.from("posts").insert(row);
       if (parentId) {
-        await supabase.rpc("increment_post_reply_count", { pid: parentId }).catch(() => {
-          supabase.from("posts").update({ reply_count: supabase.raw ? undefined : 1 }).eq("id", parentId); // fallback
-        });
+        try { await supabase.rpc("increment_post_reply_count", { pid: parentId }); } catch {
+          const parentPost = await dbGetPost(parentId);
+          if (parentPost) await supabase.from("posts").update({ reply_count: (parentPost.replyCount || 0) + 1 }).eq("id", parentId);
+        }
       }
     } catch (e) { console.warn("Post create error:", e.message); }
   } else {
