@@ -1935,6 +1935,29 @@
     </div>
   </div>
 
+  <!-- Tip overlay -->
+  <div class="status-input-overlay" id="tip-overlay" onclick="if(event.target===this)closeTipOverlay()">
+    <div class="status-input-box">
+      <div style="font-size:13px;margin-bottom:4px;font-weight:600;">Tip <span id="tip-recipient-name"></span></div>
+      <div style="font-size:11px;color:#555;margin-bottom:10px;font-family:var(--font-mono);" id="tip-recipient-addr"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="number" id="tip-amount" step="0.001" min="0.001" placeholder="0.01" style="flex:1;padding:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:16px;outline:none;border-radius:8px;text-align:right;" />
+        <span style="font-family:var(--font-mono);font-size:14px;color:var(--text-muted);">ETH</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.001'">0.001</button>
+        <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.005'">0.005</button>
+        <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.01'">0.01</button>
+        <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.05'">0.05</button>
+        <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.1'">0.1</button>
+      </div>
+      <div class="status-input-actions" style="margin-top:12px;">
+        <button onclick="closeTipOverlay()">Cancel</button>
+        <button class="primary" onclick="confirmTip()">Send Tip</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Upload preview overlay -->
   <div class="upload-preview-overlay" id="upload-preview-overlay" onclick="if(event.target===this)cancelUploadPreview()">
     <div class="upload-preview-label" id="upload-preview-label"></div>
@@ -3223,6 +3246,11 @@ function renderContactCard(user, i, isOffline) {
     const lastSeenText = (isOffline && user.lastSeen) ? " · " + timeAgo(user.lastSeen) : "";
     statsLine = isOffline ? "Offline" + lastSeenText : contactIdle ? "Away" : "New here";
   }
+  // Append pair meeting info if we have it
+  const pair = myPairData[user.name?.toLowerCase()];
+  if (pair && pair.meetCount > 0) {
+    statsLine += ` · ${pair.meetCount}x · ${pair.creditSeconds || 0}s`;
+  }
   const saved = isSaved(user.name, user.xUsername);
   const starSvg = saved
     ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="#E8A83C" stroke="#E8A83C" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
@@ -3586,7 +3614,7 @@ function connectSocket() {
     socket.emit("chat-history");
     resetIdleTimer();
     loadStats();
-    if (socket) socket.emit("get-social-score");
+    if (socket) { socket.emit("get-social-score"); socket.emit("get-my-pairs"); }
     loadDirectory(); // backfills contact pfps from directory
     if (socket) socket.emit("get-notifications");
     // Register E2E public key for encrypted DMs
@@ -3668,7 +3696,11 @@ function connectSocket() {
     showScreen("login-screen");
     $("#login-error").textContent = message;
     $("#name-input").classList.add("error");
+    $("#name-input").disabled = false;
     $("#join-btn").disabled = false;
+    // Restore subtitle
+    const sub = document.querySelector(".login-subtitle");
+    if (sub && sub.textContent === "Reconnecting...") sub.textContent = "No schedule. 1 minute calls only.\nEasiest way to catch up or keep in touch.";
   });
 
   socket.on("user-list", (list) => {
@@ -4048,6 +4080,11 @@ function connectSocket() {
     updateMyStats();
   });
 
+  socket.on("my-pairs", (pairs) => {
+    myPairData = pairs || {};
+    renderContacts($("#search-input")?.value || "");
+  });
+
   socket.on("new-notification", (notif) => {
     notifUnread++;
     updateNotifBadge(notifUnread);
@@ -4057,6 +4094,7 @@ function connectSocket() {
     else if (notif.type === "poke") showToast(`${notif.fromUser} poked you 👋`, "info", 2000);
     else if (notif.type === "dm") showToast(`${notif.fromUser}: ${(notif.preview || "").slice(0, 40)}`, "info", 2000);
     else if (notif.type === "call_request") showToast(`📞 ${notif.fromUser} wants to call you — check notifications`, "info", 5000);
+    else if (notif.type === "tip") showToast(`💰 ${notif.fromUser} tipped you ${notif.preview}!`, "success", 5000);
   });
 
   socket.on("poke", ({ fromUserId, fromName, fromAvatar }) => {
@@ -4369,6 +4407,10 @@ function handleProfileData(data) {
   if (data.stats?.totalMeets > 0) statsHtml += `<div><span>${data.stats.totalMeets}</span> meets</div>`;
   if (data.stats?.received > 0) statsHtml += `<div><span>${pickupRate(data.stats)}%</span> pickup</div>`;
   if (data.stats?.totalOnlineMs > 60_000) statsHtml += `<div><span>${formatOnlineTime(data.stats.totalOnlineMs)}</span> online</div>`;
+  // Pair relationship info (only when viewing someone else's profile)
+  if (!profileIsOwn && data.pairInfo && data.pairInfo.meetCount > 0) {
+    statsHtml += `<div style="width:100%;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);font-size:10px;color:#555;">You &amp; ${escapeHtml(data.displayName || data.username)}: <span style="color:var(--text);">${data.pairInfo.meetCount}</span> meet${data.pairInfo.meetCount !== 1 ? "s" : ""} · <span style="color:var(--text);">${data.pairInfo.creditSeconds || 0}s</span> credit</div>`;
+  }
   $("#profile-stats-row").innerHTML = statsHtml;
 
   // Actions
@@ -4389,6 +4431,9 @@ function handleProfileData(data) {
       actionsHtml += `<button class="profile-action-btn primary" onclick="callUser('${online.userId}','${escapeHtml(online.name).replace(/'/g,"\\'")}',${online.avatar?"'"+online.avatar.replace(/'/g,"\\'")+"'":"null"})">Call</button>`;
     } else {
       actionsHtml += `<button class="profile-action-btn" onclick="callBackUser('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')">Request Call</button>`;
+    }
+    if (data.walletAddress) {
+      actionsHtml += `<button class="profile-action-btn" onclick="tipUser('${escapeHtml(data.walletAddress)}','${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')">Tip ETH</button>`;
     }
     actionsHtml += `<button class="link-btn" onclick="copyProfileLink('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg> share</button>`;
   }
@@ -4601,6 +4646,7 @@ function renderNotifications(notifications) {
     else if (n.type === "dm") text = `<strong>${escapeHtml(n.fromUser)}</strong>: ${escapeHtml(n.preview || "")}`;
     else if (n.type === "poke") text = `<strong>${escapeHtml(n.fromUser)}</strong> poked you 👋`;
     else if (n.type === "call_request") text = `<strong>${escapeHtml(n.fromUser)}</strong> wants to call you 📞`;
+    else if (n.type === "tip") text = `<strong>${escapeHtml(n.fromUser)}</strong> tipped you ${escapeHtml(n.preview || "")} 💰`;
     let onclick;
     if (n.postId) onclick = `showProfile(profileTarget||'${escapeHtml(myName).replace(/'/g,"\\'")}');showThread('${n.postId}')`;
     else if (n.type==="dm") onclick = `openDM(null,'${escapeHtml(n.fromUser).replace(/'/g,"\\'")}',null);document.getElementById('notif-panel').classList.remove('active')`;
@@ -4660,6 +4706,7 @@ async function loadStats() {
 }
 
 let dmConversations = [];
+let myPairData = {}; // peerName -> { meetCount, creditSeconds }
 
 async function loadDMConversations() {
   if (!myName) return;
@@ -4745,6 +4792,53 @@ window.callBackUser = function(name) {
     // Send call request notification to them
     if (socket) socket.emit("call-request", { targetName: name });
     showToast(`${name} is offline — they'll get a notification`, "info", 3000);
+  }
+};
+
+let tipTargetAddress = null;
+let tipTargetName = null;
+
+window.tipUser = function(walletAddress, displayName) {
+  if (!window._signer) {
+    showToast("Connect your wallet first to send a tip", "error");
+    return;
+  }
+  tipTargetAddress = walletAddress;
+  tipTargetName = displayName;
+  document.getElementById("tip-recipient-name").textContent = displayName;
+  document.getElementById("tip-recipient-addr").textContent = walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4);
+  document.getElementById("tip-amount").value = "";
+  document.getElementById("tip-overlay").classList.add("active");
+  document.getElementById("tip-amount").focus();
+};
+
+window.closeTipOverlay = function() {
+  document.getElementById("tip-overlay").classList.remove("active");
+  tipTargetAddress = null; tipTargetName = null;
+};
+
+window.confirmTip = async function() {
+  const amount = document.getElementById("tip-amount").value;
+  if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+    showToast("Enter a valid amount", "error");
+    return;
+  }
+  if (!tipTargetAddress || !window._signer) return;
+  closeTipOverlay();
+  try {
+    showToast("Confirm in your wallet...", "info", 5000);
+    const tx = await window._signer.sendTransaction({
+      to: tipTargetAddress,
+      value: ethers.parseEther(amount),
+    });
+    showToast(`Tip sent! TX: ${tx.hash.slice(0, 10)}...`, "success", 5000);
+    if (socket) socket.emit("tip-sent", { toName: tipTargetName, amount, txHash: tx.hash });
+  } catch (e) {
+    if (e.code === "ACTION_REJECTED" || e.code === 4001) {
+      showToast("Tip cancelled", "info");
+    } else {
+      showToast("Tip failed: " + (e.reason || e.message || "unknown error"), "error");
+    }
   }
 };
 
@@ -4911,6 +5005,10 @@ $("#my-custom-status").addEventListener("click", () => {
 $("#status-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveCustomStatus();
   if (e.key === "Escape") closeStatusOverlay();
+});
+$("#tip-amount").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") confirmTip();
+  if (e.key === "Escape") closeTipOverlay();
 });
 
 // Search
@@ -5304,18 +5402,31 @@ window.addEventListener("load", async () => {
 
   if (savedUserId && savedName) {
     myName = savedName;
-    // Hide login screen while reconnecting to avoid flash
-    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    // Show login screen with a reconnecting state (not blank)
+    showScreen("login-screen");
+    $("#join-btn").disabled = true;
+    $("#name-input").value = savedName;
+    $("#name-input").disabled = true;
+    $("#login-error").textContent = "";
+    // Show subtle reconnecting indicator
+    const loginLogo = document.querySelector(".login-subtitle");
+    const origSubtitle = loginLogo ? loginLogo.textContent : "";
+    if (loginLogo) loginLogo.textContent = "Reconnecting...";
     connectSocket();
-    // If reconnect fails after 10s, show login
+    // If reconnect fails after 15s, restore login form
     setTimeout(() => {
-      if (!myUserId) showScreen("login-screen");
-    }, 10000);
+      if (!myUserId) {
+        if (loginLogo) loginLogo.textContent = origSubtitle;
+        $("#name-input").disabled = false;
+        $("#join-btn").disabled = false;
+        showScreen("login-screen");
+      }
+    }, 15000);
   }
 
   // Pre-fill name if saved
   const storedName = localStorage.getItem("om_last_name");
-  if (storedName) $("#name-input").value = storedName;
+  if (storedName && !savedUserId) $("#name-input").value = storedName;
 });
 
 // Save name to localStorage for convenience

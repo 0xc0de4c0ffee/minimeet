@@ -1261,8 +1261,10 @@ const streamChats = new Map(); // streamId -> [ messages ]
 
 function broadcastUserList() {
   const users = [];
+  const seenNames = new Set();
   for (const [userId, data] of onlineUsers) {
-    if (!data.disconnectedAt) {
+    if (!data.disconnectedAt && !seenNames.has(data.name.toLowerCase())) {
+      seenNames.add(data.name.toLowerCase());
       // Check if user is streaming
       let streaming = null;
       for (const [streamId, s] of activeStreams) {
@@ -2015,7 +2017,13 @@ io.on("connection", (socket) => {
       if (xProfile?.avatar) { avatar = xProfile.avatar; dbSetAvatar(key, avatar); }
     }
     const socialScore = await dbGetSocialScore(key);
-    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, stats, postCount, customStatus: profile.customStatus || null, socialScore });
+    // Include pair meeting info if viewer has a relationship with this user
+    const viewerData = socket.userId ? onlineUsers.get(socket.userId) : null;
+    let pairInfo = null;
+    if (viewerData && viewerData.name.toLowerCase() !== key) {
+      pairInfo = await dbGetPairMeetings(viewerData.name, key);
+    }
+    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, stats, postCount, customStatus: profile.customStatus || null, socialScore, pairInfo });
   });
 
   socket.on("update-profile", async ({ bio, banner }) => {
@@ -2033,6 +2041,35 @@ io.on("connection", (socket) => {
     const userData = onlineUsers.get(userId); if (!userData) return;
     const score = await dbGetSocialScore(userData.name);
     socket.emit("social-score", score);
+  });
+
+  socket.on("get-my-pairs", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const key = userData.name.toLowerCase().trim().replace(/[%_\\]/g, "");
+    const pairs = {};
+    if (supabase) {
+      try {
+        const { data } = await supabase.from("pair_meetings").select("pair, meet_count, credit_seconds").like("pair", `%${key}%`);
+        if (data) for (const r of data) {
+          const parts = r.pair.split(":");
+          const peer = parts.find(p => p !== key) || parts[0];
+          pairs[peer] = { meetCount: r.meet_count || 0, creditSeconds: r.credit_seconds || 0 };
+        }
+      } catch {}
+    } else {
+      const store = jsonStores["pair_meetings"] || {};
+      for (const [pair, val] of Object.entries(store)) {
+        if (!pair.includes(key)) continue;
+        try {
+          const pm = JSON.parse(val);
+          const parts = pair.split(":");
+          const peer = parts.find(p => p !== key) || parts[0];
+          pairs[peer] = { meetCount: pm.meetCount || 0, creditSeconds: pm.creditSeconds || 0 };
+        } catch {}
+      }
+    }
+    socket.emit("my-pairs", pairs);
   });
 
   socket.on("get-notifications", async () => {
@@ -2108,6 +2145,15 @@ io.on("connection", (socket) => {
   });
 
   // Call request for offline users (by name)
+  socket.on("tip-sent", async ({ toName, amount, txHash }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!toName || !amount || !txHash) return;
+    const preview = `${amount} ETH`;
+    const notif = await dbCreateNotification(toName, "tip", userData.name, null, preview);
+    emitNotification(toName, notif);
+  });
+
   socket.on("call-request", async ({ targetName }) => {
     if (!rateLimit(socket, "call-request", 3, 60_000)) return;
     const userId = socket.userId; if (!userId) return;
