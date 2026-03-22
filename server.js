@@ -1548,6 +1548,7 @@ function broadcastUserList() {
         });
       }
     }
+    console.log(`📡 broadcast: ${users.length} online [${users.map(u => u.name + ":" + u.status).join(", ")}]`);
     io.emit("user-list", users);
     io.emit("online-count", users.length);
   });
@@ -1899,6 +1900,7 @@ io.on("connection", (socket) => {
       profile.customStatus = userData.customStatus;
       await dbSetProfile(userData.name, profile);
     }
+    console.log(`🔄 set-status: ${userData.name} ${prevStatus} → ${status}`);
     broadcastUserList();
   });
 
