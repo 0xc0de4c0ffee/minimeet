@@ -4897,6 +4897,33 @@ function connectSocket() {
     }
 
     registerRetried = false;
+
+    // If X-authenticated and name is taken, let user pick a name
+    if (isTaken && myXUsername && !myUserId) {
+      showScreen("login-screen");
+      const nameInput = $("#name-input");
+      // Pre-fill with @handle as suggestion
+      nameInput.value = myXUsername;
+      nameInput.disabled = false;
+      nameInput.classList.remove("error");
+      $("#join-btn").disabled = false;
+      $("#login-error").textContent = `"${savedName || myName}" is taken — choose a different name`;
+      // Override join button to register with chosen name + X identity
+      const joinHandler = () => {
+        const chosen = nameInput.value.trim();
+        if (!chosen) return;
+        myName = chosen;
+        localStorage.setItem("om_name", chosen);
+        localStorage.setItem("om_last_name", chosen);
+        const savedX = localStorage.getItem("om_xUsername") || myXUsername;
+        const savedWallet = localStorage.getItem("om_walletAddress") || myWalletAddress || null;
+        socket.emit("register", { name: chosen, avatar: myAvatar, xUsername: savedX, walletAddress: savedWallet, sessionToken: localStorage.getItem("om_sessionToken") });
+        $("#join-btn").removeEventListener("click", joinHandler);
+      };
+      $("#join-btn").addEventListener("click", joinHandler);
+      return;
+    }
+
     // If user was already logged in (active session), don't dump to login — just show toast
     if (myUserId) {
       showToast(message || "Connection issue — retrying...", "error", 3000);
