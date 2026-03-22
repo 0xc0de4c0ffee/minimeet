@@ -658,9 +658,9 @@
       background: var(--green); animation: pulse 2s ease infinite;
     }
     .invite-btn {
-      font-size: 11px; color: #888;
+      font-size: 9px; color: #555;
       background: none; border: none;
-      padding: 4px 0;
+      padding: 2px 0;
       font-family: var(--font-mono); font-weight: 400;
       cursor: pointer; transition: color 0.2s;
       display: flex; align-items: center; gap: 4px;
@@ -804,24 +804,24 @@
     .my-stats:empty { display: none; }
     /* Auto-Meet toggle */
     .auto-meet-toggle {
-      display: flex; align-items: center; gap: 4px;
-      font-family: var(--font-mono); font-size: 10px;
-      color: #555; cursor: pointer;
-      padding: 3px 8px; border-radius: 6px;
-      border: 1px solid var(--border); background: none;
+      display: flex; align-items: center; gap: 3px;
+      font-family: var(--font-mono); font-size: 9px;
+      color: #444; cursor: pointer;
+      padding: 2px 0; border-radius: 0;
+      border: none; background: none;
       transition: all 0.2s; white-space: nowrap;
     }
     .auto-meet-toggle:hover { background: var(--surface-hover); }
     .auto-meet-toggle.active {
-      color: var(--green); border-color: rgba(74,222,128,0.3);
-      background: rgba(74,222,128,0.08);
+      color: #6a6; border-color: transparent;
+      background: none;
     }
     .auto-meet-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #555; transition: background 0.2s;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #444; transition: background 0.2s;
     }
     .auto-meet-toggle.active .auto-meet-dot {
-      background: var(--green); animation: pulse 2s ease infinite;
+      background: #6a6;
     }
     .auto-meet-cooldown {
       display: none; font-size: 9px; opacity: 0.7;
@@ -1133,9 +1133,9 @@
 
     /* Go Live button in contacts */
     .go-live-btn {
-      font-size: 11px; color: #888;
+      font-size: 9px; color: #555;
       background: none; border: none;
-      padding: 4px 0;
+      padding: 2px 0;
       font-family: var(--font-mono); font-weight: 400;
       cursor: pointer; transition: color 0.2s;
       display: flex; align-items: center; gap: 4px;
@@ -1473,9 +1473,9 @@
       .my-name { font-size: 11px; }
       .x-handle, .wallet-handle { font-size: 10px; }
       .info-right { gap: 6px; }
-      .auto-meet-toggle { font-size: 10px; padding: 4px 8px; }
-      .go-live-btn { font-size: 10px; padding: 4px 8px; }
-      .invite-btn { font-size: 10px; padding: 4px 8px; }
+      .auto-meet-toggle { font-size: 8px; }
+      .go-live-btn { font-size: 8px; }
+      .invite-btn { font-size: 8px; }
       .online-count { font-size: 11px; }
       .my-stats { font-size: 10px; padding: 3px 8px; }
       .my-custom-status { font-size: 10px; }
@@ -1680,6 +1680,12 @@
             <div class="my-name"><span id="my-name-display" style="cursor:pointer;" onclick="showProfile(myName)"></span> · <a href="#" id="sign-out-link" class="sign-out-link">Sign out</a> <button class="link-btn" id="link-wallet-btn" style="display:none;" title="Link Wallet">+ wallet</button> <button class="link-btn" id="link-x-btn" style="display:none;" title="Link X account">+ X</button></div>
             <div class="my-custom-status" id="my-custom-status" title="Click to set status"></div>
           </div>
+        </div>
+        <div style="position:relative;display:inline-flex;">
+          <button class="notif-btn" id="msgs-btn" title="Messages">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </button>
+          <div class="notif-panel" id="msgs-panel"></div>
         </div>
         <div style="position:relative;display:inline-flex;">
           <button class="notif-btn" id="notif-btn" title="Notifications">
@@ -3836,8 +3842,13 @@ function connectSocket() {
     } else if (streamLink) {
       localStorage.removeItem("om_streamLink");
       setTimeout(() => joinStream(streamLink), 500);
+    } else if (reconnected) {
+      // Reconnect — stay on whatever screen the user is currently on
+      // Just make sure at least one screen is visible
+      const anyActive = document.querySelector(".screen.active");
+      if (!anyActive) showScreen("contacts-screen");
     } else {
-      // Normal login — show contacts screen
+      // Fresh login — show contacts screen
       showScreen("contacts-screen");
       if (!myContacts || myContacts.length === 0) {
         setTimeout(() => {
@@ -4769,6 +4780,11 @@ function handleProfileData(data) {
       actionsHtml += `<button style="${iconBtnStyle}" onclick="tipUser('${escapeHtml(tipAddr)}','${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')"><svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></svg></button>`;
     }
     // Share icon (no border)
+    // Follow/star button
+    const contactKey = data.xUsername ? "@" + data.xUsername.toLowerCase() : (data.displayName || data.username).toLowerCase();
+    const isFollowing = myContacts.includes(contactKey);
+    actionsHtml += `<button style="${iconBtnStyle}color:${isFollowing ? '#E8A83C' : 'var(--text-muted)'};" onclick="toggleProfileFollow('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}', ${data.xUsername ? "'" + escapeHtml(data.xUsername).replace(/'/g,"\\'") + "'" : "null"})" title="${isFollowing ? 'Unfollow' : 'Follow'}"><svg width="16" height="16" viewBox="0 0 24 24" fill="${isFollowing ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>`;
+    // Share button
     actionsHtml += `<button style="background:none;border:none;color:#555;cursor:pointer;padding:4px;transition:color 0.15s;" onclick="copyProfileLink('${escapeHtml(data.displayName||data.username).replace(/'/g,"\\'")}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></button>`;
   }
   $("#profile-actions").innerHTML = actionsHtml;
@@ -4921,6 +4937,21 @@ window.togglePostLike = function(postId) {
   if (socket) socket.emit("toggle-like", { postId });
 };
 
+window.toggleProfileFollow = function(name, xUsername) {
+  const contactKey = xUsername ? "@" + xUsername.toLowerCase() : name.toLowerCase();
+  if (myContacts.includes(contactKey)) {
+    if (socket) socket.emit("remove-contact", { contactName: contactKey });
+    myContacts = myContacts.filter(c => c !== contactKey);
+    showToast(`Unfollowed ${name}`, "info");
+  } else {
+    if (socket) socket.emit("add-contact", { contactName: contactKey });
+    myContacts.push(contactKey);
+    showToast(`Following ${name}`, "success");
+  }
+  // Refresh the profile to update the star
+  if (profileTarget) showProfile(profileTarget);
+};
+
 window.focusReply = function(rootId, authorName) {
   const replyInput = document.getElementById("reply-input-" + rootId);
   if (replyInput) {
@@ -5060,36 +5091,38 @@ async function loadDMConversations() {
   } catch {}
 }
 
+function renderMessages() {
+  const panel = document.getElementById("msgs-panel");
+  if (!panel) return;
+  if (dmConversations.length === 0) {
+    panel.innerHTML = '<div style="padding:20px;text-align:center;color:#555;font-size:12px;">No messages yet</div>';
+    return;
+  }
+  panel.innerHTML = dmConversations.map(c => {
+    const color = getColor(c.peerName);
+    const initials = getInitials(c.peerName);
+    const cached = getCachedMeta(c.peerName.toLowerCase());
+    const bg = cached?.avatar ? `background-image:url(${cached.avatar})` : `background:${color}`;
+    const inner = cached?.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+    const displayName = /^0x[0-9a-f]{40}$/.test(c.peerName) ? c.peerName.slice(0,6) + "..." + c.peerName.slice(-4) : c.peerName;
+    return `<div class="notif-item" onclick="directoryOpenDM('${escapeHtml(c.peerName).replace(/'/g,"\\'")}');document.getElementById('msgs-panel').classList.remove('active')">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div class="directory-item-pfp" style="${bg};width:28px;height:28px;border-radius:50%;flex-shrink:0;">${inner}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12px;font-weight:600;">${escapeHtml(displayName)}</div>
+          <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.lastMessage || "")} · ${timeAgo(c.lastTime)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
 function renderDirectory(filter = "") {
   const list = document.getElementById("directory-list");
   const lower = filter.toLowerCase();
   let html = "";
 
-  // Section 1: DM conversations (if any, and no active filter or filter matches)
-  const filteredConvos = dmConversations.filter(c => {
-    if (!lower) return true;
-    return c.peerName.toLowerCase().includes(lower);
-  });
-  if (filteredConvos.length > 0) {
-    html += '<div style="font-size:10px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Messages</div>';
-    html += filteredConvos.map(c => {
-      const color = getColor(c.peerName);
-      const initials = getInitials(c.peerName);
-      const cached = getCachedMeta(c.peerName.toLowerCase());
-      const bg = cached?.avatar ? `background-image:url(${cached.avatar})` : `background:${color}`;
-      const inner = cached?.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
-      const displayName = /^0x[0-9a-f]{40}$/.test(c.peerName) ? c.peerName.slice(0,6) + "..." + c.peerName.slice(-4) : c.peerName;
-      return `<div class="directory-item" onclick="directoryOpenDM('${escapeHtml(c.peerName).replace(/'/g,"\\'")}')">
-        <div class="directory-item-pfp" style="${bg}">${inner}</div>
-        <div class="directory-item-info">
-          <div class="directory-item-name">${escapeHtml(displayName)}</div>
-          <div class="directory-item-meta">${escapeHtml(c.lastMessage || "")} · ${timeAgo(c.lastTime)}</div>
-        </div>
-      </div>`;
-    }).join("");
-  }
-
-  // Section 2: All users
+  // All users
   const filtered = directoryData.filter(u => {
     if (!lower) return true;
     return (u.name || "").toLowerCase().includes(lower)
@@ -5201,10 +5234,45 @@ window.confirmTip = async function() {
       const provider = new ethers.JsonRpcProvider("https://ethereum.publicnode.com", 1, { staticNetwork: true });
       signer = new ethers.Wallet(myAppWallet.privateKey, provider);
       showToast("Sending from app wallet...", "info", 3000);
-    } else {
+    } else if (!signer && myAppWallet?.address && !myAppWallet?.privateKey) {
+      // App wallet exists but private key is locked — try to unlock
+      const stored = localStorage.getItem("mm_app_wallet");
+      if (stored) {
+        try {
+          const data = JSON.parse(stored);
+          if (data.ct) {
+            const pw = prompt("Enter your password to unlock your app wallet:");
+            if (pw) {
+              const w = await decryptWalletKey(data, pw);
+              myAppWallet = w;
+              const provider = new ethers.JsonRpcProvider("https://ethereum.publicnode.com", 1, { staticNetwork: true });
+              signer = new ethers.Wallet(w.privateKey, provider);
+              showToast("Wallet unlocked — sending...", "info", 3000);
+            }
+          }
+        } catch { showToast("Wrong password", "error"); return; }
+      }
+      if (!signer) {
+        // Still no signer — offer to connect external wallet
+        if (typeof showWalletModal === "function") {
+          showToast("Connect a wallet or set a password for your app wallet", "info");
+          showWalletModal();
+        } else {
+          showToast("No wallet available — set a password for your app wallet from your profile", "error");
+        }
+        return;
+      }
+    } else if (signer) {
       showToast("Confirm in your wallet...", "info", 5000);
+    } else {
+      if (typeof showWalletModal === "function") {
+        showToast("Connect a wallet to send", "info");
+        showWalletModal();
+      } else {
+        showToast("No wallet available", "error");
+      }
+      return;
     }
-    if (!signer) { showToast("No wallet available", "error"); return; }
     const tx = await signer.sendTransaction({
       to: addr,
       value: ethers.parseEther(amount),
@@ -5352,7 +5420,7 @@ $("#directory-btn").addEventListener("click", async () => {
     panel.classList.remove("active");
     return;
   }
-  await Promise.all([loadDirectory(), loadDMConversations()]);
+  await loadDirectory();
   renderDirectory();
   panel.classList.add("active");
   document.getElementById("directory-search").value = "";
@@ -5456,8 +5524,28 @@ window.clearPostImage = function() {
 };
 
 // Notifications
+// Messages panel
+$("#msgs-btn").addEventListener("click", async (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById("msgs-panel");
+  document.getElementById("notif-panel")?.classList.remove("active"); // close notifs
+  panel.classList.toggle("active");
+  if (panel.classList.contains("active")) {
+    await loadDMConversations();
+    renderMessages();
+  }
+});
+
+// Close panels on click outside
+document.addEventListener("click", () => {
+  document.getElementById("msgs-panel")?.classList.remove("active");
+  document.getElementById("notif-panel")?.classList.remove("active");
+});
+
+// Notifications panel
 $("#notif-btn").addEventListener("click", (e) => {
   e.stopPropagation();
+  document.getElementById("msgs-panel")?.classList.remove("active"); // close msgs
   const panel = document.getElementById("notif-panel");
   panel.classList.toggle("active");
   if (panel.classList.contains("active")) {
