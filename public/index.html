@@ -397,25 +397,35 @@
     .profile-banner-edit.visible { display: flex; }
     .profile-banner-edit:hover { background: rgba(255,255,255,0.3); }
     .profile-search-wrap {
-      position: relative; padding: 0 16px; margin-top: 8px;
+      position: absolute; top: 12px; right: 12px; z-index: 10;
     }
+    .profile-search-toggle {
+      background: rgba(0,0,0,0.5); border: none; color: #fff;
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px); transition: background 0.15s;
+    }
+    .profile-search-toggle:hover { background: rgba(0,0,0,0.7); }
+    .profile-search-wrap.open .profile-search-toggle { display: none; }
     .profile-search-bar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 12px; background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px;
+      display: none; align-items: center; gap: 6px;
+      padding: 7px 10px; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 20px;
+      width: 200px;
     }
+    .profile-search-wrap.open .profile-search-bar { display: flex; }
     .profile-search-bar input {
-      flex: 1; background: none; border: none; color: var(--text);
-      font-size: 13px; font-family: var(--font-mono); outline: none;
+      flex: 1; background: none; border: none; color: #fff;
+      font-size: 12px; font-family: var(--font-mono); outline: none;
       min-width: 0;
     }
-    .profile-search-bar input::placeholder { color: #555; }
+    .profile-search-bar input::placeholder { color: rgba(255,255,255,0.45); }
     .profile-search-results {
-      position: absolute; left: 16px; right: 16px; top: 100%;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; max-height: 240px; overflow-y: auto;
-      display: none; z-index: 20; margin-top: 4px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      position: absolute; right: 0; top: calc(100% + 4px);
+      width: 260px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; max-height: 220px; overflow-y: auto;
+      display: none; z-index: 20;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     }
     .profile-search-results.active { display: block; }
     .profile-search-item {
@@ -427,12 +437,12 @@
     .profile-search-item:last-child { border-radius: 0 0 10px 10px; }
     .profile-search-item:only-child { border-radius: 10px; }
     .profile-search-pfp {
-      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
       overflow: hidden; display: flex; align-items: center; justify-content: center;
       background-size: cover; background-position: center;
     }
     .profile-search-info { flex: 1; min-width: 0; }
-    .profile-search-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .profile-search-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .profile-search-meta { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .profile-header {
       padding: 0 20px; margin-top: -44px; position: relative;
@@ -1885,6 +1895,8 @@
 
       /* Profile */
       .profile-banner { height: 120px; }
+      .profile-search-bar { width: 170px; }
+      .profile-search-results { width: 220px; }
       .profile-avatar { width: 68px; height: 68px; }
       .profile-header { padding: 0 14px; margin-top: -34px; }
       .profile-name { font-size: 18px; }
@@ -2006,6 +2018,11 @@
 
       /* Profile on tiny screens */
       .profile-banner { height: 100px; }
+      .profile-search-toggle { width: 30px; height: 30px; }
+      .profile-search-toggle svg { width: 13px; height: 13px; }
+      .profile-search-bar { width: 150px; padding: 5px 8px; }
+      .profile-search-bar input { font-size: 11px; }
+      .profile-search-results { width: 200px; max-height: 180px; }
       .profile-avatar { width: 56px; height: 56px; border-width: 3px; }
       .profile-header { padding: 0 12px; margin-top: -28px; }
       .profile-name { font-size: 16px; }
@@ -2293,13 +2310,16 @@
       <button class="profile-banner-edit" id="profile-banner-edit" onclick="document.getElementById('banner-file-input').click()" title="Change banner">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
-    </div>
-    <div class="profile-search-wrap" id="profile-search-wrap">
-      <div class="profile-search-bar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;opacity:0.4;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="profile-search-input" placeholder="Search users, groups..." maxlength="60" autocomplete="off">
+      <div class="profile-search-wrap" id="profile-search-wrap">
+        <button class="profile-search-toggle" id="profile-search-toggle" title="Search users & groups">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <div class="profile-search-bar" id="profile-search-bar">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;opacity:0.4;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="profile-search-input" placeholder="Search..." maxlength="60" autocomplete="off">
+        </div>
+        <div class="profile-search-results" id="profile-search-results"></div>
       </div>
-      <div class="profile-search-results" id="profile-search-results"></div>
     </div>
     <div class="profile-header">
       <div class="profile-avatar pfp-circle" id="profile-avatar"></div>
@@ -7264,6 +7284,8 @@ window.showFollowers = function(username) {
 function showProfile(username) {
   profileTarget = username;
   pendingProfilePostImage = null; // reset on profile switch
+  const _psw = document.getElementById("profile-search-wrap");
+  if (_psw) { _psw.classList.remove("open"); }
   const _psi = document.getElementById("profile-search-input");
   if (_psi) _psi.value = "";
   const _psr = document.getElementById("profile-search-results");
@@ -7763,17 +7785,28 @@ window.confirmGiftTime = function(toName, maxCredit) {
 
 // ── Profile search ──────────────────────────────────────────────────────
 (function() {
+  const wrap = document.getElementById("profile-search-wrap");
+  const toggle = document.getElementById("profile-search-toggle");
   const input = document.getElementById("profile-search-input");
   const results = document.getElementById("profile-search-results");
-  if (!input || !results) return;
+  if (!wrap || !toggle || !input || !results) return;
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    wrap.classList.add("open");
+    setTimeout(() => input.focus(), 50);
+  });
   let debounce = null;
   input.addEventListener("input", () => {
     clearTimeout(debounce);
     debounce = setTimeout(() => renderProfileSearch(input.value.trim()), 120);
   });
   input.addEventListener("focus", () => { if (input.value.trim()) renderProfileSearch(input.value.trim()); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") { input.value = ""; results.classList.remove("active"); wrap.classList.remove("open"); } });
   document.addEventListener("click", (e) => {
-    if (!e.target.closest(".profile-search-wrap")) results.classList.remove("active");
+    if (!e.target.closest(".profile-search-wrap")) {
+      results.classList.remove("active");
+      if (!input.value.trim()) wrap.classList.remove("open");
+    }
   });
 })();
 
