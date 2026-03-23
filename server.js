@@ -841,6 +841,163 @@ async function dbGetGroupLastMsg(groupId) {
   try { const msgs = stored ? JSON.parse(stored) : []; return msgs.length > 0 ? msgs[msgs.length - 1] : null; } catch { return null; }
 }
 
+// ─── Token-gated rooms ───────────────────────────────────────────────────────
+
+const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
+const ERC721_ABI = ["function balanceOf(address) view returns (uint256)"];
+const TOKEN_RPC = "https://1rpc.io/eth";
+
+async function checkTokenBalance(tokenAddress, tokenType, walletAddress) {
+  const RPCS = [TOKEN_RPC, "https://ethereum.publicnode.com", "https://eth.drpc.org"];
+  for (const rpc of RPCS) {
+    try {
+      const { ethers } = require("ethers");
+      const provider = new ethers.JsonRpcProvider(rpc, 1, { staticNetwork: true });
+      const abi = tokenType === "NFT" ? ERC721_ABI : ERC20_ABI;
+      const contract = new ethers.Contract(tokenAddress, abi, provider);
+      const balance = await contract.balanceOf(walletAddress);
+      return balance;
+    } catch (e) { console.warn(`Token balance check error (${rpc}):`, e.message); }
+  }
+  return null; // all RPCs failed — caller should handle as retry
+}
+
+async function dbCreateGatedRoom(id, name, creator, tokenAddress, tokenType, minBalance, avatar, creatorWallet) {
+  const wallet = creatorWallet || "creator";
+  if (supabase) {
+    try {
+      await supabase.from("gated_rooms").insert({ id, name, creator, token_address: tokenAddress, token_type: tokenType, min_balance: minBalance, avatar: avatar || null, created_at: new Date().toISOString() });
+      await supabase.from("gated_room_members").insert({ room_id: id, user_name: creator, wallet_address: wallet, joined_at: new Date().toISOString() });
+    } catch (e) { console.warn("Gated room create error:", e.message); }
+    return;
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  let list; try { list = rooms ? JSON.parse(rooms) : []; } catch { list = []; }
+  list.push({ id, name, creator, tokenAddress, tokenType, minBalance, avatar, createdAt: Date.now(), members: [{ userName: creator, walletAddress: wallet }] });
+  jsonSet("gated_rooms", "_all", JSON.stringify(list));
+}
+
+async function dbGetGatedRoom(roomId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("gated_rooms").select("*").eq("id", roomId).single();
+      if (data) return { id: data.id, name: data.name, creator: data.creator, tokenAddress: data.token_address, tokenType: data.token_type, minBalance: data.min_balance, avatar: data.avatar || null, createdAt: new Date(data.created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  try { const list = rooms ? JSON.parse(rooms) : []; return list.find(r => r.id === roomId) || null; } catch { return null; }
+}
+
+async function dbGetGatedRoomMembers(roomId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("gated_room_members").select("user_name, wallet_address").eq("room_id", roomId);
+      return (data || []).map(d => ({ userName: d.user_name, walletAddress: d.wallet_address }));
+    } catch {}
+    return [];
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  try { const list = rooms ? JSON.parse(rooms) : []; const r = list.find(r => r.id === roomId); return r ? r.members : []; } catch { return []; }
+}
+
+async function dbAddGatedRoomMember(roomId, userName, walletAddress) {
+  if (supabase) {
+    try { await supabase.from("gated_room_members").upsert({ room_id: roomId, user_name: userName.toLowerCase().trim(), wallet_address: walletAddress.toLowerCase(), joined_at: new Date().toISOString() }); } catch (e) { console.warn("Gated room member add error:", e.message); }
+    return;
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  let list; try { list = rooms ? JSON.parse(rooms) : []; } catch { list = []; }
+  const r = list.find(r => r.id === roomId);
+  if (r) { if (!r.members.find(m => m.userName === userName.toLowerCase().trim())) r.members.push({ userName: userName.toLowerCase().trim(), walletAddress: walletAddress.toLowerCase() }); jsonSet("gated_rooms", "_all", JSON.stringify(list)); }
+}
+
+async function dbRemoveGatedRoomMember(roomId, userName) {
+  if (supabase) {
+    try { await supabase.from("gated_room_members").delete().eq("room_id", roomId).eq("user_name", userName.toLowerCase().trim()); } catch {}
+    return;
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  let list; try { list = rooms ? JSON.parse(rooms) : []; } catch { list = []; }
+  const r = list.find(r => r.id === roomId);
+  if (r) { r.members = r.members.filter(m => m.userName !== userName.toLowerCase().trim()); jsonSet("gated_rooms", "_all", JSON.stringify(list)); }
+}
+
+async function dbGetUserGatedRooms(userName) {
+  const key = userName.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("gated_room_members").select("room_id").eq("user_name", key);
+      if (!data || data.length === 0) return [];
+      const roomIds = data.map(d => d.room_id);
+      const { data: rooms } = await supabase.from("gated_rooms").select("*").in("id", roomIds);
+      return (rooms || []).map(r => ({ id: r.id, name: r.name, creator: r.creator, tokenAddress: r.token_address, tokenType: r.token_type, minBalance: r.min_balance, avatar: r.avatar || null, createdAt: new Date(r.created_at).getTime() }));
+    } catch {}
+    return [];
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  try { const list = rooms ? JSON.parse(rooms) : []; return list.filter(r => r.members.some(m => m.userName === key)); } catch { return []; }
+}
+
+async function dbSaveGatedRoomMsg(roomId, msg) {
+  if (supabase) {
+    try {
+      const row = { id: msg.id, room_id: roomId, sender: msg.sender, sender_name: msg.senderName, text: msg.text, created_at: new Date(msg.ts).toISOString() };
+      if (msg.image) row.image = msg.image;
+      await supabase.from("gated_room_messages").insert(row);
+    } catch (e) { console.warn("Gated room msg write error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("gated_room_messages", roomId);
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  msgs.push(msg);
+  if (msgs.length > 200) msgs.splice(0, msgs.length - 200);
+  jsonSet("gated_room_messages", roomId, JSON.stringify(msgs));
+}
+
+async function dbLoadGatedRoomMsgs(roomId, limit = 50, before = null) {
+  if (supabase) {
+    try {
+      let query = supabase.from("gated_room_messages").select("*").eq("room_id", roomId).order("created_at", { ascending: false }).limit(limit);
+      if (before) query = query.lt("created_at", new Date(before).toISOString());
+      const { data } = await query;
+      if (data) return data.reverse().map(d => ({ id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, image: d.image || null, ts: new Date(d.created_at).getTime() }));
+    } catch (e) { console.warn("Gated room msg read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("gated_room_messages", roomId);
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  if (before) msgs = msgs.filter(m => m.ts < before);
+  return msgs.slice(-limit);
+}
+
+async function dbDeleteGatedRoom(roomId) {
+  if (supabase) {
+    try {
+      await supabase.from("gated_room_messages").delete().eq("room_id", roomId);
+      await supabase.from("gated_room_members").delete().eq("room_id", roomId);
+      await supabase.from("gated_rooms").delete().eq("id", roomId);
+    } catch (e) { console.warn("Gated room delete error:", e.message); }
+    return;
+  }
+  const rooms = jsonGet("gated_rooms", "_all");
+  let list; try { list = rooms ? JSON.parse(rooms) : []; } catch { list = []; }
+  jsonSet("gated_rooms", "_all", JSON.stringify(list.filter(r => r.id !== roomId)));
+  jsonSet("gated_room_messages", roomId, null);
+}
+
+async function dbGetGatedRoomLastMsg(roomId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("gated_room_messages").select("text, sender_name, created_at").eq("room_id", roomId).order("created_at", { ascending: false }).limit(1);
+      if (data && data[0]) return { text: data[0].text, senderName: data[0].sender_name, ts: new Date(data[0].created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const stored = jsonGet("gated_room_messages", roomId);
+  try { const msgs = stored ? JSON.parse(stored) : []; return msgs.length > 0 ? msgs[msgs.length - 1] : null; } catch { return null; }
+}
+
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
 async function dbCreatePost(author, text, parentId = null, image = null) {
@@ -3178,6 +3335,171 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Token-gated rooms ────────────────────────────────────────────────────
+  socket.on("create-gated-room", async ({ name, tokenAddress, tokenType, minBalance, avatar }) => {
+    if (!rateLimit(socket, "create-gated-room", 3, 60_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!name || typeof name !== "string" || !tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    const roomName = name.trim().slice(0, 50);
+    const type = tokenType === "NFT" ? "NFT" : "ERC20";
+    const minBal = (minBalance && /^\d+$/.test(minBalance) && BigInt(minBalance) > 0n) ? minBalance : "1";
+    const safeAvatar = (avatar && typeof avatar === "string" && avatar.length <= MAX_AVATAR_BYTES) ? avatar : null;
+    const roomId = uuidv4().slice(0, 12);
+    const creatorWallet = userData.walletAddress || userData.appWalletAddress || "creator";
+    await dbCreateGatedRoom(roomId, roomName, userData.name.toLowerCase().trim(), tokenAddress.toLowerCase(), type, minBal, safeAvatar, creatorWallet);
+    socket.emit("gated-room-created", { roomId, name: roomName });
+  });
+
+  socket.on("get-gated-room-info", async ({ roomId }) => {
+    if (!roomId) return;
+    const room = await dbGetGatedRoom(roomId);
+    if (!room) { socket.emit("gated-room-error", { message: "Room not found" }); return; }
+    const members = await dbGetGatedRoomMembers(roomId);
+    socket.emit("gated-room-info", { ...room, memberCount: members.length });
+  });
+
+  socket.on("join-gated-room", async ({ roomId, walletAddress, walletSignature, walletNonce }) => {
+    if (!rateLimit(socket, "join-gated-room", 5, 30_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!roomId || !walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) return;
+    const addr = walletAddress.toLowerCase();
+    const room = await dbGetGatedRoom(roomId);
+    if (!room) { socket.emit("gated-room-error", { message: "Room not found" }); return; }
+    const members = await dbGetGatedRoomMembers(roomId);
+    const myKey = userData.name.toLowerCase().trim();
+    if (members.find(m => m.userName === myKey)) {
+      socket.emit("gated-room-joined", { roomId, name: room.name });
+      return;
+    }
+    // Verify wallet ownership: must be linked wallet, app wallet, or signed proof
+    const isLinkedWallet = userData.walletAddress && userData.walletAddress === addr;
+    const isAppWallet = userData.appWalletAddress && userData.appWalletAddress === addr;
+    const isDbWallet = !isLinkedWallet && !isAppWallet && (await dbGetWallet(myKey)) === addr;
+    let isSignedProof = false;
+    if (!isLinkedWallet && !isAppWallet && !isDbWallet) {
+      // Require signature verification
+      if (walletSignature && walletNonce) {
+        isSignedProof = verifyWalletSignature(addr, walletSignature, walletNonce);
+      }
+      if (!isSignedProof) {
+        socket.emit("gated-room-error", { message: "Wallet ownership not verified. Link your wallet or sign to prove ownership." });
+        return;
+      }
+    }
+    // Server-side token balance check
+    const balance = await checkTokenBalance(room.tokenAddress, room.tokenType, addr);
+    if (balance === null) {
+      socket.emit("gated-room-error", { message: "Token check failed — try again in a moment" });
+      return;
+    }
+    const minRequired = BigInt(room.minBalance);
+    if (balance < minRequired) {
+      const needed = room.tokenType === "NFT" ? `${minRequired} NFT(s)` : `${minRequired} tokens`;
+      socket.emit("gated-room-error", { message: `Insufficient balance. Need ${needed}.` });
+      return;
+    }
+    await dbAddGatedRoomMember(roomId, userData.name, addr);
+    socket.emit("gated-room-joined", { roomId, name: room.name });
+    // Notify existing members
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("gated-room-member-joined", { roomId, userName: userData.name });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("leave-gated-room", async ({ roomId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    await dbRemoveGatedRoomMember(roomId, userData.name);
+    socket.emit("gated-room-left", { roomId });
+  });
+
+  socket.on("delete-gated-room", async ({ roomId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const room = await dbGetGatedRoom(roomId);
+    if (!room || room.creator !== userData.name.toLowerCase().trim()) { socket.emit("gated-room-error", { message: "Only creator can delete" }); return; }
+    const members = await dbGetGatedRoomMembers(roomId);
+    await dbDeleteGatedRoom(roomId);
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("gated-room-deleted", { roomId });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("gated-room-kick", async ({ roomId, userName }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const room = await dbGetGatedRoom(roomId);
+    if (!room || room.creator !== userData.name.toLowerCase().trim()) return;
+    const targetKey = (userName || "").toLowerCase().trim();
+    if (targetKey === room.creator) return;
+    await dbRemoveGatedRoomMember(roomId, targetKey);
+    for (const [uid, d] of onlineUsers) {
+      if (d.name.toLowerCase() === targetKey && !d.disconnectedAt) {
+        const s = getSocketByUserId(uid);
+        if (s) s.emit("gated-room-kicked", { roomId });
+        break;
+      }
+    }
+  });
+
+  socket.on("get-my-gated-rooms", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const rooms = await dbGetUserGatedRooms(userData.name);
+    const enriched = await Promise.all(rooms.map(async (r) => {
+      const [members, lastMsg] = await Promise.all([dbGetGatedRoomMembers(r.id), dbGetGatedRoomLastMsg(r.id)]);
+      return { ...r, memberCount: members.length, lastMessage: lastMsg?.text?.slice(0, 50) || null, lastSender: lastMsg?.senderName || null, lastTime: lastMsg?.ts || r.createdAt };
+    }));
+    socket.emit("my-gated-rooms", enriched.sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0)));
+  });
+
+  socket.on("gated-room-chat", async ({ roomId, text, image }) => {
+    if (!rateLimit(socket, "gated-room-chat", 10, 10_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGatedRoomMembers(roomId);
+    if (!members.find(m => m.userName === userData.name.toLowerCase().trim())) return;
+    const trimmed = (text || "").trim().slice(0, 500);
+    const safeImage = (image && typeof image === "string" && image.startsWith("data:image/") && image.length <= 500_000) ? image : null;
+    if (!trimmed && !safeImage) return;
+    const msg = { id: uuidv4().slice(0, 10), sender: userData.name.toLowerCase().trim(), senderName: userData.name, text: trimmed, image: safeImage, ts: Date.now() };
+    dbSaveGatedRoomMsg(roomId, msg);
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("gated-room-chat", { roomId, ...msg, avatar: userData.avatar || null });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("gated-room-history", async ({ roomId, limit, before }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGatedRoomMembers(roomId);
+    if (!members.find(m => m.userName === userData.name.toLowerCase().trim())) return;
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+    const safeBefore = typeof before === "number" ? before : null;
+    const messages = await dbLoadGatedRoomMsgs(roomId, safeLimit, safeBefore);
+    socket.emit("gated-room-history", { roomId, messages, hasMore: messages.length === safeLimit });
+  });
+
   socket.on("poke", async ({ toUserId }) => {
     if (!rateLimit(socket, "poke", 3, 30_000)) return; // 3 pokes per 30s
     const userId = socket.userId; if (!userId) return;
@@ -3624,6 +3946,16 @@ app.get("/api/directory", async (req, res) => {
   res.json(await getFullDirectory());
 });
 
+// Public gated room info (no auth — for gate screen)
+app.get("/api/gated-room/:id", async (req, res) => {
+  const roomId = (req.params.id || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 20);
+  if (!roomId) return res.status(400).json({ error: "Room ID required" });
+  const room = await dbGetGatedRoom(roomId);
+  if (!room) return res.status(404).json({ error: "Room not found" });
+  const members = await dbGetGatedRoomMembers(roomId);
+  res.json({ id: room.id, name: room.name, avatar: room.avatar, tokenAddress: room.tokenAddress, tokenType: room.tokenType, minBalance: room.minBalance, memberCount: members.length, creator: room.creator });
+});
+
 // Public profile preview (no auth required — for shared profile links)
 app.get("/api/profile/:name", async (req, res) => {
   const key = (req.params.name || "").toLowerCase().trim();
@@ -3773,6 +4105,14 @@ app.get("/", async (req, res, next) => {
     title = `Live stream on ${SITE_NAME}`;
     description = `Watch a live stream on ${SITE_NAME} — ${SITE_DESC}`;
     url += `?stream=${encodeURIComponent(String(stream).slice(0, 60))}`;
+  } else if (req.query.gate) {
+    const gateId = String(req.query.gate).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 20);
+    const room = await dbGetGatedRoom(gateId);
+    if (room) {
+      title = `${room.name} on ${SITE_NAME}`;
+      description = `Token-gated room — ${room.tokenType} required to join`;
+      url += `?gate=${gateId}`;
+    }
   }
 
   // Read the HTML and inject meta tags

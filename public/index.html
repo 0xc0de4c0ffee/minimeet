@@ -3987,7 +3987,7 @@ let dmReadCursors = new Map(); // peerName (lowercase) -> timestamp of their las
 let callChatUnread = 0;
 
 function openDM(userId, name, avatar) {
-  activeGroupId = null; // clear group context
+  activeGroupId = null; activeGatedRoomId = null; // clear group/gated context
   dmTargetUserId = userId;
   dmTargetName = name;
   // Setup header
@@ -4027,6 +4027,7 @@ function closeDM() {
   $("#dm-overlay").classList.remove("active");
   dmTargetUserId = null;
   activeGroupId = null;
+  activeGatedRoomId = null;
 }
 
 function loadOlderDMs() {
@@ -4069,6 +4070,14 @@ async function sendDM() {
   const input = $("#dm-input");
   const text = input.value.trim();
   const image = pendingDMImage;
+  // Token-gated room: route if active
+  if (activeGatedRoomId) {
+    if (!text && !image) return;
+    input.value = "";
+    clearDMImage();
+    socket.emit("gated-room-chat", { roomId: activeGatedRoomId, text, image });
+    return;
+  }
   // Group chat: route to group if active
   if (activeGroupId) {
     if (!text && !image) return;
@@ -4815,7 +4824,7 @@ function connectSocket() {
     autoMeetCooldownHours = cooldownHours || 24;
     updateAutoMeetUI();
     // Fetch all initial data in one request
-    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); }
+    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); socket.emit("get-my-gated-rooms"); }
     if (reconnected) showToast("Reconnected", "success", 1500);
     // Re-sync presence status after reconnect (server defaults to "online")
     if (manualStatus && myPresenceStatus !== "online" && socket) {
@@ -4897,8 +4906,12 @@ function connectSocket() {
     const profileLink = localStorage.getItem("om_profileLink");
     const streamLink = localStorage.getItem("om_streamLink");
     const postLink = localStorage.getItem("om_postLink");
+    const gateLink = localStorage.getItem("om_gateLink");
 
-    if (privateRoomId) {
+    if (gateLink) {
+      localStorage.removeItem("om_gateLink");
+      setTimeout(() => showGateScreen(gateLink), 500);
+    } else if (privateRoomId) {
       // Join private room after registration
       localStorage.removeItem("om_privateRoom");
       joinPrivateRoom(privateRoomId);
@@ -5815,6 +5828,80 @@ function connectSocket() {
   });
 
   socket.on("group-error", ({ message }) => { showToast(message, "error"); });
+
+  // ── Token-gated room events ────────────────────────────────────────────
+  socket.on("gated-room-created", ({ roomId, name }) => {
+    showToast(`Room "${name}" created`, "success");
+    // Copy gate link
+    navigator.clipboard.writeText(`${window.location.origin}/?gate=${roomId}`).then(() => showToast("Gate link copied to clipboard!", "success", 3000)).catch(() => {});
+    if (socket) socket.emit("get-my-gated-rooms");
+  });
+
+  socket.on("gated-room-joined", ({ roomId, name }) => {
+    document.getElementById("gate-overlay")?.remove();
+    showToast(`Joined "${name}"`, "success");
+    if (socket) socket.emit("get-my-gated-rooms");
+    setTimeout(() => openGatedRoomChat(roomId), 300);
+  });
+
+  socket.on("gated-room-left", ({ roomId }) => {
+    myGatedRooms = myGatedRooms.filter(r => r.id !== roomId);
+    gatedRoomMessages.delete(roomId);
+    if (activeGatedRoomId === roomId) closeDM();
+  });
+
+  socket.on("gated-room-deleted", ({ roomId }) => {
+    showToast("Token-gated room was deleted", "error");
+    myGatedRooms = myGatedRooms.filter(r => r.id !== roomId);
+    gatedRoomMessages.delete(roomId);
+    if (activeGatedRoomId === roomId) closeDM();
+  });
+
+  socket.on("gated-room-kicked", ({ roomId }) => {
+    showToast("You were removed from a token-gated room", "error");
+    myGatedRooms = myGatedRooms.filter(r => r.id !== roomId);
+    gatedRoomMessages.delete(roomId);
+    if (activeGatedRoomId === roomId) closeDM();
+  });
+
+  socket.on("gated-room-member-joined", ({ roomId, userName }) => {
+    if (activeGatedRoomId === roomId) {
+      appendGroupMsg({ id: Date.now().toString(36), sender: "", senderName: userName, text: `${userName} joined`, ts: Date.now() }, null);
+    }
+  });
+
+  socket.on("my-gated-rooms", (rooms) => { myGatedRooms = rooms || []; });
+
+  socket.on("gated-room-chat", ({ roomId, ...msg }) => {
+    if (!gatedRoomMessages.has(roomId)) gatedRoomMessages.set(roomId, []);
+    const msgs = gatedRoomMessages.get(roomId);
+    if (!msgs.find(m => m.id === msg.id)) msgs.push(msg);
+    if (activeGatedRoomId === roomId) appendGroupMsg(msg, null);
+    const r = myGatedRooms.find(r => r.id === roomId);
+    if (r) { r.lastMessage = (msg.text || "").slice(0, 50); r.lastSender = msg.senderName; r.lastTime = msg.ts; }
+  });
+
+  socket.on("gated-room-history", ({ roomId, messages, hasMore }) => {
+    if (!messages || messages.length === 0) {
+      if (activeGatedRoomId === roomId) {
+        const container = $("#dm-messages");
+        if (container.querySelector(".dm-empty")) container.innerHTML = '<div class="dm-empty">Start the conversation...</div>';
+      }
+      return;
+    }
+    const existing = gatedRoomMessages.get(roomId) || [];
+    const seen = new Set(existing.map(m => m.id));
+    const merged = [...messages.filter(m => !seen.has(m.id)), ...existing].sort((a, b) => a.ts - b.ts);
+    gatedRoomMessages.set(roomId, merged);
+    if (activeGatedRoomId === roomId) {
+      const container = $("#dm-messages");
+      container.innerHTML = "";
+      merged.forEach(m => appendGroupMsg(m, container));
+      container.scrollTop = container.scrollHeight;
+    }
+  });
+
+  socket.on("gated-room-error", ({ message }) => { showToast(message, "error"); });
 
   // Bundled init response — processes contacts, chat, notifications, score, pairs, feed in one go
   socket.on("init-data", ({ contacts, chatHistory, notifications, unreadCount, socialScore, pairs, globalFeed }) => {
@@ -6879,7 +6966,10 @@ function renderMessages() {
   if (!panel) return;
   let html = "";
   // Create group button
-  html += `<div style="padding:6px 8px;border-bottom:1px solid var(--border);"><button onclick="showCreateGroup();document.getElementById('msgs-panel').classList.remove('active')" style="width:100%;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">+ New Group</button></div>`;
+  html += `<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;gap:6px;">
+    <button onclick="showCreateGroup();document.getElementById('msgs-panel').classList.remove('active')" style="flex:1;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">+ Group</button>
+    <button onclick="showCreateGatedRoom();document.getElementById('msgs-panel').classList.remove('active')" style="flex:1;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">🔒 Token Gate</button>
+  </div>`;
   // Groups
   if (myGroups.length > 0) {
     html += '<div style="font-size:9px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Groups</div>';
@@ -6891,6 +6981,22 @@ function renderMessages() {
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:600;">${escapeHtml(g.name)}</div>
             <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.lastSender ? escapeHtml(g.lastSender) + ": " : ""}${escapeHtml(g.lastMessage || "No messages")} · ${g.lastTime ? timeAgo(g.lastTime) : "new"}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+  // Token-gated rooms
+  if (myGatedRooms.length > 0) {
+    html += '<div style="font-size:9px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Token-Gated</div>';
+    html += myGatedRooms.map(r => {
+      const color = getColor(r.name);
+      return `<div class="notif-item" onclick="openGatedRoomChat('${r.id}');document.getElementById('msgs-panel').classList.remove('active')">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;">🔒</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;">${escapeHtml(r.name)}</div>
+            <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.lastSender ? escapeHtml(r.lastSender) + ": " : ""}${escapeHtml(r.lastMessage || "No messages")} · ${r.lastTime ? timeAgo(r.lastTime) : "new"}</div>
           </div>
         </div>
       </div>`;
@@ -6936,7 +7042,7 @@ window.acceptGroupInvite = function(groupId) {
 };
 
 window.openGroupChat = function(groupId) {
-  activeGroupId = groupId;
+  activeGroupId = groupId; activeGatedRoomId = null;
   const group = myGroups.find(g => g.id === groupId);
   // Reuse the DM overlay for group chat
   const pfp = $("#dm-header-pfp");
@@ -6984,6 +7090,151 @@ window.closeGroupChat = function() { activeGroupId = null; };
 window.goLiveInGroup = function(groupId) {
   closeDM();
   startStream(groupId);
+};
+
+// ── Token-gated rooms ──────────────────────────────────────────────────
+let myGatedRooms = [];
+let activeGatedRoomId = null;
+let gatedRoomMessages = new Map();
+
+window.showCreateGatedRoom = function() {
+  const existing = document.getElementById("create-gated-overlay");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "create-gated-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;width:320px;max-width:90vw;";
+  card.innerHTML = `
+    <div style="font-size:15px;font-weight:600;margin-bottom:12px;">Create Token-Gated Room</div>
+    <input id="gated-name" type="text" placeholder="Room name" maxlength="50" style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+    <input id="gated-token" type="text" placeholder="Token contract address (0x...)" maxlength="42" style="width:100%;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:var(--font-mono);margin-bottom:8px;box-sizing:border-box;">
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <select id="gated-type" style="flex:1;padding:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;">
+        <option value="ERC20">ERC-20</option>
+        <option value="NFT">NFT (ERC-721)</option>
+      </select>
+      <input id="gated-min" type="text" placeholder="Min balance" value="1" style="flex:1;padding:8px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:var(--font-mono);text-align:right;">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="this.closest('#create-gated-overlay').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:13px;">Cancel</button>
+      <button onclick="submitCreateGatedRoom()" style="flex:1;padding:10px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Create</button>
+    </div>
+  `;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  document.getElementById("gated-name").focus();
+};
+
+window.submitCreateGatedRoom = function() {
+  const name = document.getElementById("gated-name")?.value?.trim();
+  const token = document.getElementById("gated-token")?.value?.trim();
+  const type = document.getElementById("gated-type")?.value;
+  const min = document.getElementById("gated-min")?.value?.trim() || "1";
+  if (!name || !token || !/^0x[0-9a-fA-F]{40}$/.test(token)) { showToast("Enter a valid room name and token address", "error"); return; }
+  if (socket) socket.emit("create-gated-room", { name, tokenAddress: token, tokenType: type, minBalance: min });
+  document.getElementById("create-gated-overlay")?.remove();
+};
+
+window.showGateScreen = async function(roomId) {
+  // Fetch room info
+  let room;
+  try {
+    const res = await fetch(`/api/gated-room/${roomId}`);
+    if (res.ok) room = await res.json();
+  } catch {}
+  if (!room) { showToast("Room not found", "error"); return; }
+
+  const existing = document.getElementById("gate-overlay");
+  if (existing) existing.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "gate-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:20px;";
+  const color = getColor(room.name);
+  const bg = room.avatar ? `${safeCssUrl(room.avatar)} center/cover` : color;
+  overlay.innerHTML = `
+    <div style="width:64px;height:64px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;font-size:24px;">🔒</div>
+    <div style="font-size:20px;font-weight:700;">${escapeHtml(room.name)}</div>
+    <div style="font-size:12px;color:var(--text-muted);">${room.memberCount} member${room.memberCount !== 1 ? "s" : ""} · Token-gated</div>
+    <div style="font-size:11px;color:#555;font-family:var(--font-mono);">${room.tokenType} · ${escapeHtml(room.tokenAddress)}</div>
+    <div style="font-size:11px;color:#555;">Min: ${escapeHtml(room.minBalance)} ${room.tokenType === "NFT" ? "NFT(s)" : "tokens"}</div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button onclick="verifyAndJoinGate('${roomId}','app')" style="padding:10px 20px;background:var(--red);border:none;border-radius:10px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Verify App Wallet</button>
+      <button onclick="verifyAndJoinGate('${roomId}','external')" style="padding:10px 20px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:13px;">External Wallet</button>
+    </div>
+    <button onclick="document.getElementById('gate-overlay').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;margin-top:4px;">Cancel</button>
+  `;
+  document.body.appendChild(overlay);
+};
+
+window.verifyAndJoinGate = async function(roomId, walletType) {
+  let walletAddress;
+  let signature = null, nonce = null;
+  if (walletType === "app") {
+    walletAddress = myAppWallet?.address || myWalletAddress;
+    if (!walletAddress) { showToast("No app wallet — connect an external wallet", "error"); return; }
+  } else {
+    walletAddress = myWalletAddress || window._connectedAddress;
+    if (!walletAddress) {
+      if (window.connectWallet) await window.connectWallet();
+      walletAddress = window._connectedAddress;
+    }
+    if (!walletAddress) { showToast("Connect your wallet first", "error"); return; }
+  }
+  // Check if this wallet is already linked to our account (no signature needed)
+  const isLinked = (myWalletAddress && myWalletAddress.toLowerCase() === walletAddress.toLowerCase()) ||
+                   (myAppWallet?.address && myAppWallet.address.toLowerCase() === walletAddress.toLowerCase());
+  if (!isLinked) {
+    // Need wallet signature to prove ownership
+    try {
+      showToast("Sign to verify wallet ownership...", "info", 5000);
+      const nonceRes = await fetch(`/auth/wallet/nonce?address=${walletAddress.toLowerCase()}`);
+      if (!nonceRes.ok) { showToast("Failed to get nonce", "error"); return; }
+      const { message, nonce: n } = await nonceRes.json();
+      nonce = n;
+      let signer;
+      if (walletType === "app" && myAppWallet?.privateKey) {
+        const provider = new ethers.JsonRpcProvider("https://1rpc.io/eth", 1, { staticNetwork: true });
+        signer = new ethers.Wallet(myAppWallet.privateKey, provider);
+      } else if (window._signer) {
+        signer = window._signer;
+      } else {
+        showToast("No signer available", "error"); return;
+      }
+      signature = await signer.signMessage(message);
+    } catch (e) {
+      showToast("Signature failed: " + (e.reason || e.message || "cancelled"), "error");
+      return;
+    }
+  }
+  showToast("Verifying token balance...", "info", 3000);
+  if (socket) socket.emit("join-gated-room", { roomId, walletAddress, walletSignature: signature, walletNonce: nonce });
+};
+
+window.openGatedRoomChat = function(roomId) {
+  activeGatedRoomId = roomId;
+  activeGroupId = null;
+  dmTargetUserId = null;
+  dmTargetName = null;
+  const room = myGatedRooms.find(r => r.id === roomId);
+  const pfp = $("#dm-header-pfp");
+  const color = getColor(room?.name || "Room");
+  pfp.style.background = color;
+  pfp.innerHTML = "🔒";
+  $("#dm-header-name").textContent = room?.name || "Token-Gated Room";
+  const container = $("#dm-messages");
+  const msgs = gatedRoomMessages.get(roomId) || [];
+  container.innerHTML = msgs.length === 0 ? '<div class="dm-empty">Loading...</div>' : "";
+  msgs.forEach(m => appendGroupMsg(m, container));
+  container.scrollTop = container.scrollHeight;
+  if (socket) socket.emit("gated-room-history", { roomId });
+  $("#dm-overlay").classList.add("active");
+  $("#dm-input").focus();
+};
+
+window.copyGateLink = function(roomId) {
+  navigator.clipboard.writeText(`${window.location.origin}/?gate=${roomId}`).then(() => showToast("Gate link copied!", "success", 1500));
 };
 
 window.renameGroup = function(groupId) {
@@ -7886,6 +8137,33 @@ window.addEventListener("load", async () => {
     const postLink = decodeURIComponent(params.get("post")).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 20);
     localStorage.setItem("om_postLink", postLink);
     window.history.replaceState({}, "", "/");
+  }
+
+  if (params.get("gate")) {
+    const gateId = decodeURIComponent(params.get("gate")).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 20);
+    localStorage.setItem("om_gateLink", gateId);
+    window.history.replaceState({}, "", "/");
+    // Show gate preview on login screen
+    fetch(`/api/gated-room/${gateId}`).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data || myUserId) return;
+      const container = document.getElementById("login-screen");
+      if (!container) return;
+      const preview = document.createElement("div");
+      preview.id = "gate-preview";
+      preview.style.cssText = "width:320px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center;margin-bottom:4px;";
+      const color = getColor(data.name);
+      const bg = data.avatar ? `${safeCssUrl(data.avatar)} center/cover` : color;
+      preview.innerHTML = `
+        <div style="width:48px;height:48px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;margin:0 auto 10px;background-size:cover;background-position:center;font-size:16px;">🔒</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px;">${escapeHtml(data.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Token-gated · ${data.memberCount} member${data.memberCount !== 1 ? "s" : ""}</div>
+        <div style="font-size:10px;color:#555;font-family:var(--font-mono);margin-bottom:8px;">${data.tokenType} · ${escapeHtml(data.tokenAddress.slice(0,6))}...${escapeHtml(data.tokenAddress.slice(-4))}</div>
+        <div style="font-size:11px;color:var(--text-muted);">Sign in & verify wallet to join</div>
+      `;
+      const loginBtn = container.querySelector(".login-btn");
+      if (loginBtn) container.insertBefore(preview, loginBtn.closest(".login-form-row") || loginBtn);
+      else container.querySelector(".login-logo")?.after(preview);
+    }).catch(() => {});
   }
 
   if (params.get("stream")) {
