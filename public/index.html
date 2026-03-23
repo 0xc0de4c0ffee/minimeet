@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>minimeet.cc</title>
   <meta name="description" content="minute meetings and socials" />
   <meta property="og:type" content="website" />
@@ -33,7 +33,7 @@
       --font-mono: 'Space Mono', monospace;
       /* Wallet CSS compat */
       --fg: #EEEEF0;
-      --modal-overlay: rgba(0,0,0,0.6);
+      --modal-overlay: rgba(0,0,0,0.85);
       --modal-bg: #1a1a2e;
       --modal-border: rgba(255,255,255,0.08);
       --btn-bg: rgba(255,255,255,0.07);
@@ -44,11 +44,11 @@
       font-family: var(--font-body);
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      min-height: 100vh; min-height: 100dvh;
       overflow: hidden;
     }
 
-    .screen { display: none; height: 100vh; }
+    .screen { display: none; height: 100vh; height: 100dvh; }
     .screen.active { display: flex; }
 
     /* ── Password Modal ────────────────────────────────── */
@@ -248,10 +248,11 @@
       background: none; border: 1px solid var(--border);
       border-radius: 8px; color: var(--text-muted);
       font-size: 11px; font-family: var(--font-mono);
-      padding: 4px 10px; cursor: pointer;
+      padding: 6px 12px; min-height: 36px; cursor: pointer;
       transition: all 0.2s; text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center;
     }
-    .link-btn:hover { border-color: var(--red); color: var(--text); }
+    .link-btn:hover, .link-btn:active { border-color: var(--red); color: var(--text); }
     .visitor-count {
       font-family: var(--font-mono); font-size: 10px; color: #555;
     }
@@ -371,6 +372,7 @@
     #profile-screen {
       flex-direction: column; overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .profile-banner {
       width: 100%; height: 160px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -395,21 +397,45 @@
     .profile-banner-edit.visible { display: flex; }
     .profile-banner-edit:hover { background: rgba(255,255,255,0.3); }
     .profile-header {
-      padding: 0 20px; margin-top: -32px; position: relative;
+      padding: 0 20px; margin-top: -44px; position: relative;
     }
     .profile-avatar {
-      width: 64px; height: 64px; border-radius: 50%;
-      border: 3px solid var(--bg); background-size: cover; background-position: center;
+      width: 88px; height: 88px; border-radius: 50%;
+      border: 4px solid var(--bg); background-size: cover; background-position: center;
       display: flex; align-items: center; justify-content: center;
     }
+    .profile-name-row {
+      display: flex; align-items: center; gap: 8px; margin-top: 10px;
+    }
     .profile-name {
-      font-size: 20px; font-weight: 700; margin-top: 8px;
+      font-size: 20px; font-weight: 700;
       overflow: hidden; text-overflow: ellipsis; word-break: break-word;
     }
+    .profile-status-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+    .profile-status-dot.online { background: var(--green); }
+    .profile-status-dot.idle { background: var(--amber); }
+    .profile-status-dot.offline { background: #555; }
+    .profile-status-dot.dnd { background: var(--red); }
     .profile-handle {
       font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); margin-top: 2px;
       word-break: break-all;
     }
+    .profile-handle a { color: var(--text-muted); text-decoration: none; }
+    .profile-handle a:hover { text-decoration: underline; }
+    .profile-wallets {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+      margin-top: 4px; font-family: var(--font-mono); font-size: 11px;
+    }
+    .profile-wallet-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 6px; min-height: 28px;
+      background: var(--surface); color: var(--text-muted);
+      text-decoration: none; transition: background 0.15s;
+    }
+    .profile-wallet-chip:hover, .profile-wallet-chip:active { background: var(--surface-hover); }
+    .profile-wallet-chip.app-wallet { color: #555; font-size: 10px; }
     .profile-bio {
       font-size: 13px; color: #bbb; line-height: 1.5; margin-top: 8px;
       word-break: break-word;
@@ -417,29 +443,43 @@
     .profile-bio a { color: var(--red); text-decoration: none; }
     .profile-bio a:hover { text-decoration: underline; }
     .profile-stats-row {
-      display: flex; gap: 16px; margin-top: 10px; padding-bottom: 12px;
+      display: flex; gap: 16px; margin-top: 12px; padding-bottom: 12px;
       border-bottom: 1px solid var(--border);
       font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
       flex-wrap: wrap;
     }
     .profile-stats-row span { color: var(--text); font-weight: 700; }
+    .profile-pair-section {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: 12px; font-family: var(--font-mono); color: var(--text-muted);
+    }
+    .profile-pair-section span.val { color: var(--text); font-weight: 600; }
     .profile-actions {
-      display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+      display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; align-items: center;
     }
     .profile-action-btn {
-      padding: 6px 14px; border: 1px solid var(--border); background: none;
-      color: var(--text); font-size: 12px; font-family: var(--font-body);
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 12px; border: 1px solid var(--border); background: none;
+      color: var(--text-muted); font-size: 11px; font-family: var(--font-mono);
       border-radius: 8px; cursor: pointer; transition: all 0.15s;
     }
-    .profile-action-btn:hover { background: var(--surface-hover); }
-    .profile-action-btn.primary { background: var(--red); border-color: var(--red); }
-    .profile-action-btn.primary:hover { opacity: 0.9; }
+    .profile-action-btn:hover, .profile-action-btn:active { background: var(--surface-hover); color: var(--text); }
+    .profile-action-btn.primary { background: var(--red); border-color: var(--red); color: #fff; }
+    .profile-action-btn.primary:hover, .profile-action-btn.primary:active { opacity: 0.9; }
+    .profile-action-btn.active { border-color: #E8A83C; color: #E8A83C; }
     .profile-posts { padding: 0 20px 20px; }
-    .profile-posts-title {
-      font-size: 14px; font-weight: 600; padding: 12px 0 8px;
-      font-family: var(--font-mono); text-transform: uppercase;
-      letter-spacing: 0.05em; color: var(--text-muted);
+    .profile-tab-bar {
+      display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 8px;
     }
+    .profile-posts-tab {
+      flex: 1; padding: 10px 8px; background: none; border: none;
+      border-bottom: 2px solid transparent; color: var(--text-muted);
+      font-size: 12px; font-family: var(--font-mono); cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .profile-posts-tab:hover { color: var(--text); }
+    .profile-posts-tab.active { border-bottom-color: var(--text); color: var(--text); }
     .post {
       padding: 12px 0; border-bottom: 1px solid var(--border);
     }
@@ -605,7 +645,7 @@
     .status-input-overlay.active { display: flex; }
     .status-input-box {
       background: #1a1a2e; border: 1px solid var(--border); padding: 20px;
-      width: 320px; max-width: 90vw;
+      border-radius: 12px; width: 320px; max-width: 90vw;
     }
     .status-input-box input {
       width: 100%; padding: 10px; background: var(--surface);
@@ -617,12 +657,13 @@
       display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;
     }
     .status-input-actions button {
-      padding: 6px 14px; border: 1px solid var(--border); background: none;
-      color: var(--text); font-size: 12px; cursor: pointer; font-family: var(--font-body);
+      padding: 8px 16px; min-height: 44px; border: 1px solid var(--border); background: none;
+      color: var(--text); font-size: 13px; cursor: pointer; font-family: var(--font-body);
+      border-radius: 8px;
     }
-    .status-input-actions button:hover { background: var(--surface-hover); }
+    .status-input-actions button:hover, .status-input-actions button:active { background: var(--surface-hover); }
     .status-input-actions button.primary { background: var(--red); border-color: var(--red); }
-    .status-input-actions button.primary:hover { opacity: 0.9; }
+    .status-input-actions button.primary:hover, .status-input-actions button.primary:active { opacity: 0.9; }
     .x-handle {
       font-family: var(--font-mono); font-size: 11px;
       color: #888; font-weight: 400;
@@ -632,7 +673,8 @@
     #contacts-screen {
       flex-direction: column;
       max-width: 500px; margin: 0 auto;
-      padding: 32px 20px; width: 100%;
+      padding: 32px 20px; padding-top: max(32px, env(safe-area-inset-top, 32px));
+      width: 100%;
       animation: fadeIn 0.4s ease;
     }
     .header {
@@ -688,9 +730,21 @@
       font-size: 11px; transition: color 0.2s;
     }
     .sign-out-link:hover { color: var(--red); }
-    .info-right {
+    .info-toolbar {
       display: flex; align-items: center; gap: 10px;
-      flex-wrap: wrap;
+    }
+    .toolbar-btn {
+      font-size: 10px; color: #666;
+      background: none; border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 8px;
+      font-family: var(--font-mono); font-weight: 400;
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 5px;
+      white-space: nowrap;
+    }
+    .toolbar-btn:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+    .info-stats {
+      display: flex; align-items: center; gap: 10px;
     }
     .online-count {
       font-size: 10px; color: #555;
@@ -734,15 +788,7 @@
       padding: 10px 12px; font-size: 11px; color: #555;
       font-family: var(--font-mono); text-align: center;
     }
-    .invite-btn {
-      font-size: 9px; color: #555;
-      background: none; border: none;
-      padding: 2px 0;
-      font-family: var(--font-mono); font-weight: 400;
-      cursor: pointer; transition: color 0.2s;
-      display: flex; align-items: center; gap: 4px;
-    }
-    .invite-btn:hover { color: var(--text); }
+    /* toolbar-btn covers invite/go-live/directory — see .toolbar-btn above */
 
     /* Call-link pending banner */
     .call-link-banner {
@@ -872,6 +918,8 @@
       flex: 1; overflow-y: auto; padding: 8px 12px;
       display: flex; flex-direction: column; gap: 4px;
       min-height: 60px; max-height: 160px;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .ephemeral-msg {
       font-size: 13px; line-height: 1.4; word-break: break-word;
@@ -910,39 +958,32 @@
       display: flex; flex-direction: column; gap: 2px;
       overflow-y: auto; flex: 1;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .section-label {
       font-family: var(--font-mono);
-      font-size: 10px; font-weight: 700;
+      font-size: 11px; font-weight: 700;
       color: #555; text-transform: uppercase;
       letter-spacing: 1.5px;
-      padding: 12px 14px 4px;
+      padding: 18px 14px 6px;
     }
     .section-label.first { padding-top: 0; }
-    .section-divider {
-      height: 1px; background: var(--border);
-      margin: 8px 14px;
-    }
     .contact-card {
       display: flex; align-items: center; gap: 14px;
       padding: 12px 14px; border-radius: 14px;
       cursor: pointer; transition: all 0.2s;
       animation: slideUp 0.4s ease both;
     }
-    .contact-card:hover { background: var(--surface-hover); transform: translateX(4px); }
+    @media (hover: hover) {
+      .contact-card:hover { background: var(--surface-hover); transform: translateX(4px); }
+    }
+    @media (hover: none) {
+      .contact-card:active { background: var(--surface-hover); }
+    }
     .contact-card.offline-saved {
       opacity: 0.45;
     }
     .contact-card.offline-saved:hover { transform: none; cursor: default; }
-    .save-btn {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: none; border: none;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: all 0.15s; flex-shrink: 0;
-      color: #444;
-    }
-    .save-btn:hover { color: #E8A83C; transform: scale(1.15); }
-    .save-btn.saved { color: #E8A83C; }
     .avatar {
       width: 44px; height: 44px; border-radius: 14px;
       display: flex; align-items: center; justify-content: center;
@@ -1036,6 +1077,43 @@
       display: flex; align-items: center; justify-content: center;
       color: var(--green); flex-shrink: 0;
     }
+
+    /* Card action overflow menu */
+    .card-action-primary {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: rgba(255,255,255,0.04); border: none;
+      display: flex; align-items: center; justify-content: center;
+      color: #888; flex-shrink: 0; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .card-action-primary:hover { color: var(--text); background: var(--surface-hover); }
+    .card-more-wrap { position: relative; }
+    .card-more-btn {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: none; border: none;
+      display: flex; align-items: center; justify-content: center;
+      color: #444; cursor: pointer; transition: color 0.15s;
+      flex-shrink: 0;
+    }
+    .card-more-btn:hover { color: var(--text); }
+    .card-more-menu {
+      display: none; position: absolute; right: 0; top: calc(100% + 4px);
+      background: #1a1a2e; border: 1px solid var(--border);
+      border-radius: 10px; padding: 4px 0; min-width: 150px;
+      z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      animation: slideUp 0.15s ease;
+    }
+    .card-more-menu.active { display: block; }
+    .more-menu-item {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 9px 14px;
+      background: none; border: none; color: var(--text);
+      font-size: 12px; font-family: var(--font-body);
+      cursor: pointer; transition: background 0.15s; text-align: left;
+      white-space: nowrap;
+    }
+    .more-menu-item:hover { background: rgba(255,255,255,0.06); }
+    .more-menu-item svg { flex-shrink: 0; color: #888; }
 
     /* ── Incoming Call Modal ───────────────────────────── */
     .incoming-overlay {
@@ -1345,15 +1423,7 @@
     .stream-viewer-name { font-size: 12px; color: #ccc; }
 
     /* Go Live button in contacts */
-    .go-live-btn {
-      font-size: 9px; color: #555;
-      background: none; border: none;
-      padding: 2px 0;
-      font-family: var(--font-mono); font-weight: 400;
-      cursor: pointer; transition: color 0.2s;
-      display: flex; align-items: center; gap: 4px;
-    }
-    .go-live-btn:hover { color: var(--red); }
+    .go-live-btn:hover { color: var(--red); border-color: rgba(232,69,60,0.3); }
 
     /* In-call pair card */
     .call-pair-card {
@@ -1424,6 +1494,8 @@
     .chat-messages {
       flex: 1; overflow-y: auto; padding: 4px 0;
       display: flex; flex-direction: column; gap: 4px;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .chat-msg {
       display: flex; align-items: flex-start; gap: 8px;
@@ -1502,6 +1574,7 @@
     }
     .chat-input-row {
       display: flex; gap: 8px; padding: 8px 0;
+      padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
     }
     .chat-input {
       flex: 1; padding: 8px 12px;
@@ -1517,7 +1590,7 @@
       font-family: var(--font-mono); cursor: pointer;
       transition: all 0.15s;
     }
-    .chat-send:hover { border-color: var(--red); color: var(--text); }
+    .chat-send:hover, .chat-send:active { border-color: var(--red); color: var(--text); }
 
     /* Stream chat overlay (positioned inside stream screen) */
     .stream-chat {
@@ -1569,6 +1642,8 @@
       flex: 1; overflow-y: auto; min-height: 120px; max-height: 40vh;
       display: flex; flex-direction: column; gap: 6px;
       padding: 4px 0;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .dm-empty {
       text-align: center; color: #555; font-size: 13px; padding: 30px 0;
@@ -1613,6 +1688,7 @@
     }
     .dm-input-row {
       display: flex; gap: 8px; padding-top: 10px;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
       border-top: 1px solid var(--border); margin-top: 8px;
     }
     .dm-input {
@@ -1625,8 +1701,9 @@
     .dm-send {
       padding: 10px 16px; background: var(--red); border: none;
       border-radius: 12px; color: #fff; font-size: 14px; font-weight: 600;
-      font-family: var(--font-body); cursor: pointer;
+      font-family: var(--font-body); cursor: pointer; transition: opacity 0.15s;
     }
+    .dm-send:active { opacity: 0.85; }
     .dm-image-preview {
       display: none; padding: 4px 12px; position: relative;
     }
@@ -1663,15 +1740,6 @@
     .stream-tip-msg .tip-amount { color: var(--amber); font-weight: 700; font-family: var(--font-mono); }
     .stream-tip-msg .tip-sender { font-weight: 600; }
     .stream-tip-msg .tip-message { font-size: 12px; color: #ccc; margin-top: 2px; }
-    /* Poke button on contact cards */
-    .poke-btn {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: none; border: none;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer; transition: all 0.15s; flex-shrink: 0;
-      color: #444; font-size: 16px;
-    }
-    .poke-btn:hover { color: var(--amber); transform: scale(1.15); }
     /* Poke notification */
     .poke-toast {
       display: flex; align-items: center; gap: 8px;
@@ -1705,7 +1773,7 @@
       .login-subtitle { font-size: 13px; }
 
       /* Contacts header */
-      #contacts-screen { padding: 20px 12px; }
+      #contacts-screen { padding: 20px 12px; padding-top: max(20px, env(safe-area-inset-top, 20px)); }
       .header { flex-wrap: wrap; gap: 10px; }
       .timer-badge { font-size: 10px; padding: 4px 8px; }
 
@@ -1714,10 +1782,11 @@
       .info-top { gap: 8px; }
       .my-name { font-size: 11px; }
       .x-handle, .wallet-handle { font-size: 10px; }
-      .info-right { gap: 6px; }
+      .info-toolbar { gap: 6px; }
+      .info-stats { gap: 6px; }
+      .toolbar-btn { font-size: 9px; padding: 4px 8px; }
+      .toolbar-label { display: none; }
       .auto-meet-toggle { font-size: 8px; }
-      .go-live-btn { font-size: 8px; }
-      .invite-btn { font-size: 8px; }
       .online-count { font-size: 11px; position: static; }
       .online-dropdown {
         position: fixed; top: auto; right: 12px; left: 12px;
@@ -1731,7 +1800,7 @@
 
       /* Search */
       .search-input { font-size: 13px; padding: 10px 12px 10px 36px; }
-      .section-label { padding: 10px 10px 4px; }
+      .section-label { padding: 16px 10px 4px; }
 
       /* Contact cards: compact buttons */
       .contact-card { padding: 10px 10px; gap: 10px; }
@@ -1740,10 +1809,10 @@
       .contact-status { font-size: 11px; }
       .call-pair-names { font-size: 13px; }
       .call-pair-card { gap: 10px; padding: 8px 10px; }
-      .poke-btn { width: 36px; height: 36px; }
-      .save-btn { width: 36px; height: 36px; }
-      .call-btn { width: 40px; height: 40px; border-radius: 10px; }
-      .watch-btn { width: 40px; height: 40px; border-radius: 10px; }
+      .call-btn { width: 44px; height: 44px; border-radius: 12px; }
+      .watch-btn { width: 44px; height: 44px; border-radius: 12px; }
+      .card-more-btn { width: 44px; height: 44px; }
+      .card-action-primary { width: 44px; height: 44px; }
 
       /* Call screen */
       .local-video-wrap { width: 100px; height: 134px; bottom: 100px; right: 12px; border-radius: 12px; }
@@ -1778,16 +1847,18 @@
 
       /* Profile */
       .profile-banner { height: 120px; }
-      .profile-avatar { width: 52px; height: 52px; }
-      .profile-header { padding: 0 14px; margin-top: -26px; }
+      .profile-avatar { width: 68px; height: 68px; }
+      .profile-header { padding: 0 14px; margin-top: -34px; }
       .profile-name { font-size: 18px; }
       .profile-handle { font-size: 11px; }
+      .profile-wallets { font-size: 10px; }
       .profile-bio { font-size: 12px; }
       .profile-stats-row { font-size: 11px; gap: 10px; }
       .profile-posts { padding: 0 14px 14px; }
-      .profile-actions button { padding: 8px !important; min-width: 36px; min-height: 36px; }
-      .profile-action-btn { padding: 8px 14px !important; min-height: 36px; }
-      .profile-back { width: 40px; height: 40px; }
+      .profile-action-btn { padding: 8px 12px !important; min-height: 44px; }
+      .profile-wallet-chip { padding: 6px 10px; min-height: 32px; }
+      .profile-pair-section { font-size: 11px; }
+      .profile-back { width: 44px; height: 44px; }
       .post-text { font-size: 13px; }
       .post-image img { max-height: 200px; }
       .post-actions { gap: 12px; }
@@ -1851,22 +1922,22 @@
       .login-btn, .x-login-btn, .wallet-login-btn, .login-divider { width: 260px; }
       .login-title { font-size: 24px; }
       .search-input { font-size: 12px; padding: 8px 10px 8px 32px; border-radius: 10px; }
-      .section-label { padding: 8px 8px 3px; font-size: 9px; }
+      .section-label { padding: 14px 8px 3px; font-size: 10px; }
       .contact-card { padding: 8px 8px; gap: 8px; }
       .contact-name { font-size: 13px; }
       .contact-status { font-size: 10px; }
       .avatar { width: 34px; height: 34px; }
       .status-dot { width: 9px; height: 9px; border-width: 2px; }
-      .poke-btn { width: 30px; height: 30px; font-size: 14px; }
-      .save-btn { width: 30px; height: 30px; }
-      .call-btn { width: 36px; height: 36px; }
-      .watch-btn { width: 36px; height: 36px; }
+      .call-btn { width: 40px; height: 40px; }
+      .watch-btn { width: 40px; height: 40px; }
+      .card-more-btn { width: 40px; height: 40px; }
       .call-pair-card { gap: 8px; padding: 6px 8px; }
       .call-pair-names { font-size: 12px; }
       .call-pair-avatars .avatar:last-child { margin-left: -12px; }
       .stream-chat { width: calc(100vw - 24px); left: 12px; }
       .my-stats { gap: 4px; padding: 3px 6px; font-size: 9px; }
-      .info-right { gap: 4px; }
+      .info-toolbar { gap: 4px; }
+      .info-stats { gap: 4px; }
       .wallet-handle { display: none; } /* too long for tiny screens */
       .post-actions { gap: 8px; }
       .post-text { font-size: 12px; }
@@ -1897,14 +1968,18 @@
 
       /* Profile on tiny screens */
       .profile-banner { height: 100px; }
-      .profile-avatar { width: 46px; height: 46px; border-width: 2px; }
-      .profile-header { padding: 0 12px; margin-top: -23px; }
+      .profile-avatar { width: 56px; height: 56px; border-width: 3px; }
+      .profile-header { padding: 0 12px; margin-top: -28px; }
       .profile-name { font-size: 16px; }
       .profile-handle { font-size: 10px; }
+      .profile-wallets { font-size: 9px; }
       .profile-bio { font-size: 11px; }
       .profile-stats-row { font-size: 10px; gap: 8px; }
+      .profile-pair-section { font-size: 10px; gap: 6px; }
       .profile-posts { padding: 0 12px 12px; }
-      .profile-actions { gap: 6px; }
+      .profile-actions { gap: 4px; }
+      .profile-action-btn { font-size: 10px; padding: 6px 10px !important; min-height: 44px; }
+      .profile-wallet-chip { padding: 4px 8px; min-height: 28px; font-size: 9px; }
 
       /* Stream on tiny screens */
       .stream-chat .chat-messages { max-height: 120px; }
@@ -2031,7 +2106,7 @@
             <div class="status-dot" id="my-status-dot" onclick="event.stopPropagation();cycleMyStatus()" title="Click to change status" style="cursor:pointer;background:var(--green);"></div>
           </div>
           <div>
-            <div class="my-name"><span id="my-name-display" style="cursor:pointer;" onclick="showProfile(myName)"></span> · <a href="#" id="sign-out-link" class="sign-out-link">Sign out</a> <button class="link-btn" id="link-wallet-btn" style="display:none;" title="Link Wallet">+ wallet</button> <button class="link-btn" id="link-x-btn" style="display:none;" title="Link X account">+ X</button></div>
+            <div class="my-name"><span id="my-name-display" style="cursor:pointer;" onclick="showProfile(myName)"></span> · <a href="#" id="sign-out-link" class="sign-out-link">Sign out</a></div>
             <div class="my-custom-status" id="my-custom-status" title="Click to set status"></div>
           </div>
         </div>
@@ -2049,30 +2124,32 @@
           <div class="notif-panel" id="notif-panel"></div>
         </div>
       </div>
-      <div class="info-right">
-        <div class="my-stats" id="my-stats"></div>
-        <div class="online-count" id="online-count" onclick="toggleOnlineDropdown(event)">
-          <div class="online-dot"></div>
-          <span id="online-count-num">0</span> online
-          <div class="online-dropdown" id="online-dropdown"></div>
-        </div>
+      <div class="info-toolbar">
+        <button class="toolbar-btn" id="invite-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+          <span class="toolbar-label">My Link</span>
+        </button>
+        <button class="toolbar-btn go-live-btn" id="go-live-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+          <span class="toolbar-label">Go Live</span>
+        </button>
+        <button class="toolbar-btn" id="directory-btn" title="User Directory">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          <span class="toolbar-label">Directory</span>
+        </button>
         <button class="auto-meet-toggle" id="auto-meet-btn" title="Auto-call mutual contacts">
           <div class="auto-meet-dot"></div>
           <span class="auto-meet-label">Auto</span>
           <span class="auto-meet-cooldown" id="auto-meet-cooldown"></span>
         </button>
-        <button class="invite-btn" id="invite-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-          My Link
-        </button>
-        <button class="go-live-btn" id="go-live-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
-          Go Live
-        </button>
-        <button class="invite-btn" id="directory-btn" title="User Directory">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-          Directory
-        </button>
+      </div>
+      <div class="info-stats">
+        <div class="online-count" id="online-count" onclick="toggleOnlineDropdown(event)">
+          <div class="online-dot"></div>
+          <span id="online-count-num">0</span> online
+          <div class="online-dropdown" id="online-dropdown"></div>
+        </div>
+        <div class="my-stats" id="my-stats"></div>
         <span class="visitor-count" id="visitor-count" title="Total visitors"></span>
       </div>
     </div>
@@ -2181,19 +2258,26 @@
     </div>
     <div class="profile-header">
       <div class="profile-avatar pfp-circle" id="profile-avatar"></div>
-      <div class="profile-name" id="profile-name"></div>
+      <div class="profile-name-row">
+        <div class="profile-name" id="profile-name"></div>
+        <div class="profile-status-dot" id="profile-status-dot"></div>
+      </div>
       <div class="profile-handle" id="profile-handle"></div>
+      <div class="profile-wallets" id="profile-wallets"></div>
       <div class="profile-bio" id="profile-bio"></div>
       <div class="profile-stats-row" id="profile-stats-row"></div>
+      <div class="profile-pair-section" id="profile-pair-section" style="display:none;"></div>
       <div class="profile-actions" id="profile-actions"></div>
     </div>
     <div class="profile-posts">
-      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:8px;">
-        <button class="profile-posts-tab active" id="profile-tab-posts" onclick="switchProfileTab('posts')" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid var(--text);color:var(--text);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Posts</button>
-        <button class="profile-posts-tab" id="profile-tab-replies" onclick="switchProfileTab('replies')" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Replies</button>
+      <div class="profile-tab-bar">
+        <button class="profile-posts-tab active" id="profile-tab-posts" onclick="switchProfileTab('posts')">Posts</button>
+        <button class="profile-posts-tab" id="profile-tab-replies" onclick="switchProfileTab('replies')">Replies</button>
+        <button class="profile-posts-tab" id="profile-tab-coins" onclick="switchProfileTab('coins')">Coins</button>
       </div>
       <div id="profile-compose"></div>
       <div id="profile-posts-list"></div>
+      <div id="profile-coins-list" style="display:none;"></div>
     </div>
   </div>
 
@@ -2373,7 +2457,7 @@
       <div style="font-size:13px;margin-bottom:4px;font-weight:600;">Tip <span id="tip-recipient-name"></span></div>
       <div style="font-size:11px;color:#555;margin-bottom:10px;font-family:var(--font-mono);" id="tip-recipient-addr"></div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <input type="number" id="tip-amount" step="0.001" min="0.001" placeholder="0.01" style="flex:1;padding:10px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:16px;outline:none;border-radius:8px;text-align:right;" />
+        <input type="number" inputmode="decimal" id="tip-amount" step="0.001" min="0.001" placeholder="0.01" style="flex:1;padding:12px;min-height:44px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:16px;outline:none;border-radius:8px;text-align:right;" />
         <span style="font-family:var(--font-mono);font-size:14px;color:var(--text-muted);">ETH</span>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
@@ -2383,7 +2467,7 @@
         <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.05'">0.05</button>
         <button class="link-btn" onclick="document.getElementById('tip-amount').value='0.1'">0.1</button>
       </div>
-      <input type="text" id="tip-message" placeholder="Add a message (optional)" maxlength="100" style="width:100%;margin-top:8px;padding:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:12px;outline:none;border-radius:8px;box-sizing:border-box;" />
+      <input type="text" id="tip-message" placeholder="Add a message (optional)" maxlength="100" style="width:100%;margin-top:8px;padding:10px 12px;min-height:44px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:13px;outline:none;border-radius:8px;box-sizing:border-box;" />
       <div class="status-input-actions" style="margin-top:12px;">
         <button onclick="closeTipOverlay()">Cancel</button>
         <button class="primary" onclick="confirmTip()">Send Tip</button>
@@ -3189,6 +3273,7 @@ let privateRoomRole = null; // "creator" or "guest"
 let users = [];
 let currentCallId = null;
 let currentRemote = null; // { userId, name, avatar }
+let lastCallRemote = null; // persists after cleanup for "Call Again" button
 let isCaller = false;
 let localStream = null;
 let peerConnection = null;
@@ -3401,7 +3486,7 @@ function showToast(msg, type = "info", duration = 3000) {
 
 function showTxToast(amount, txHash) {
   const toast = $("#toast");
-  toast.innerHTML = `Tip sent! ${amount} ETH · <a href="https://etherscan.io/tx/${txHash}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">view tx</a>`;
+  toast.innerHTML = `Tip sent! ${escapeHtml(String(amount))} ETH · <a href="https://etherscan.io/tx/${escapeHtml(String(txHash))}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">view tx</a>`;
   toast.className = "toast success visible";
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => toast.classList.remove("visible"), 8000);
@@ -3854,7 +3939,7 @@ function renderReactions(msgId, reactions) {
   }
   return '<div class="chat-reactions">' + Object.entries(counts).map(([emoji, uids]) => {
     const mine = uids.includes(myUserId) ? " mine" : "";
-    return `<span class="chat-reaction${mine}" data-msg-id="${msgId}" data-emoji="${emoji}" onclick="toggleReaction('${msgId}','${emoji}')">${emoji}<span class="chat-reaction-count">${uids.length}</span></span>`;
+    return `<span class="chat-reaction${mine}" data-msg-id="${escapeHtml(msgId)}" data-emoji="${escapeHtml(emoji)}" onclick="toggleReaction('${escapeJSAttr(msgId)}','${escapeJSAttr(emoji)}')">${escapeHtml(emoji)}<span class="chat-reaction-count">${uids.length}</span></span>`;
   }).join("") + '</div>';
 }
 
@@ -3905,6 +3990,17 @@ window.toggleReaction = function(msgId, emoji) {
   // Close picker
   document.querySelectorAll(".chat-react-picker.active").forEach(p => p.classList.remove("active"));
 };
+
+function toggleCardMore(btn) {
+  const menu = btn.nextElementSibling;
+  const wasActive = menu.classList.contains("active");
+  // Close all open menus first
+  document.querySelectorAll(".card-more-menu.active").forEach(m => m.classList.remove("active"));
+  if (!wasActive) menu.classList.add("active");
+}
+document.addEventListener("click", () => {
+  document.querySelectorAll(".card-more-menu.active").forEach(m => m.classList.remove("active"));
+});
 
 function toggleOnlineDropdown(e) {
   e.stopPropagation();
@@ -4198,7 +4294,7 @@ function updateLoginAvatar(dataUrl) {
   const overlay = $("#avatar-picker-overlay");
 
   if (dataUrl) {
-    circle.style.backgroundImage = `url(${dataUrl})`;
+    circle.style.backgroundImage = safeCssUrl(dataUrl);
     circle.classList.add("has-image");
     icon.style.display = "none";
     label.style.display = "none";
@@ -4249,9 +4345,7 @@ function updateMyPfp() {
   }
 }
 
-$("#my-pfp").addEventListener("click", () => {
-  $("#pfp-change-input").click();
-});
+
 
 let pendingUpload = null; // { type: "avatar" | "banner", dataUrl }
 
@@ -4282,13 +4376,13 @@ window.confirmUploadPreview = function() {
     // Update profile page avatar if visible
     const profileAvatar = document.getElementById("profile-avatar");
     if (profileAvatar && profileIsOwn) {
-      profileAvatar.style.background = `url(${dataUrl}) center/cover`;
+      profileAvatar.style.background = `${safeCssUrl(dataUrl)} center/cover`;
       profileAvatar.innerHTML = "";
     }
     showToast("Profile picture updated!", "success");
   } else if (type === "banner") {
     if (socket) socket.emit("update-profile", { banner: dataUrl });
-    $("#profile-banner").style.backgroundImage = `url(${dataUrl})`;
+    $("#profile-banner").style.backgroundImage = safeCssUrl(dataUrl);
     showToast("Banner updated!", "success");
   }
   pendingUpload = null;
@@ -4408,25 +4502,32 @@ function renderContactCard(user, i, isOffline) {
 
   return `
     <div class="${cardClass}" style="animation-delay:${i * 0.03}s" ${onclick}>
-      <div class="avatar" style="${bg};cursor:pointer" onclick="showProfile('${escapeJSAttr(escapeHtml(user.name))}');event.stopPropagation();">
+      <div class="avatar" style="${bg};cursor:pointer" onclick="showProfile('${escapeJSAttr(user.name)}');event.stopPropagation();">
         ${inner}
         <div class="status-dot" style="background:${dotColor}"></div>
       </div>
       <div class="contact-info">
-        <span class="contact-name"><span style="cursor:pointer" onclick="showProfile('${escapeJSAttr(escapeHtml(user.name))}');event.stopPropagation();">${escapeHtml(user.name)}</span> ${badge}</span>
+        <span class="contact-name"><span style="cursor:pointer" onclick="showProfile('${escapeJSAttr(user.name)}');event.stopPropagation();">${escapeHtml(user.name)}</span> ${badge}</span>
         <span class="contact-status">${handle}${handle && statsLine ? " · " : ""}${statsLine}</span>
       </div>
-      ${isOffline ? "" : `<button class="poke-btn" onclick="pokeUser('${user.userId}', event)" title="Poke">👋</button>`}
-      <button class="save-btn ${saved ? "saved" : ""}" onclick="toggleSaveContact('${escapeJSAttr(user.name)}', ${user.xUsername ? "'" + escapeJSAttr(user.xUsername) + "'" : "null"}, event)" title="${saved ? "Remove from contacts" : "Save to contacts"}">${starSvg}</button>
-      <button class="poke-btn" onclick="openDM(${user.userId ? "'" + user.userId + "'" : "null"},'${escapeJSAttr(user.name)}', ${user.avatar ? "'" + escapeJSAttr(user.avatar) + "'" : "null"}); event.stopPropagation();" title="Message" style="color:${isOffline ? '#555' : '#888'}"">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      </button>
-      ${isOffline ? "" : `<div class="call-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-      </div>`}
-      ${user.userId !== myUserId ? `<button class="poke-btn" onclick="event.stopPropagation();createPrivateRoom()" title="Private call link" style="color:#555">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-      </button>` : ""}
+      ${isOffline
+        ? `<button class="card-action-primary" onclick="openDM(${user.userId ? "'" + user.userId + "'" : "null"},'${escapeJSAttr(user.name)}', ${user.avatar ? "'" + escapeJSAttr(user.avatar) + "'" : "null"}); event.stopPropagation();" title="Message">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </button>`
+        : `<div class="call-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </div>`}
+      <div class="card-more-wrap">
+        <button class="card-more-btn" onclick="event.stopPropagation();toggleCardMore(this)" title="More">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+        </button>
+        <div class="card-more-menu">
+          ${!isOffline ? `<button class="more-menu-item" onclick="pokeUser('${user.userId}', event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> Poke</button>` : ""}
+          <button class="more-menu-item" onclick="openDM(${user.userId ? "'" + user.userId + "'" : "null"},'${escapeJSAttr(user.name)}', ${user.avatar ? "'" + escapeJSAttr(user.avatar) + "'" : "null"}); event.stopPropagation();"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Message</button>
+          <button class="more-menu-item" onclick="toggleSaveContact('${escapeJSAttr(user.name)}', ${user.xUsername ? "'" + escapeJSAttr(user.xUsername) + "'" : "null"}, event)"><svg width="14" height="14" viewBox="0 0 24 24" fill="${saved ? '#E8A83C' : 'none'}" stroke="${saved ? '#E8A83C' : 'currentColor'}" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ${saved ? "Unsave" : "Save"}</button>
+          ${user.userId !== myUserId ? `<button class="more-menu-item" onclick="event.stopPropagation();createPrivateRoom()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg> Private Link</button>` : ""}
+        </div>
+      </div>
     </div>`;
 }
 
@@ -4560,14 +4661,12 @@ function renderContacts(filter = "") {
   }
 
   if (hasLive) {
-    if (hasSection) html += `<div class="section-divider"></div>`;
     html += `<div class="section-label ${hasSection ? "" : "first"}">Live Now</div>`;
     liveUsers.forEach(u => { html += renderStreamCard(u, idx++); });
     hasSection = true;
   }
 
   if (hasSaved) {
-    if (hasSection) html += `<div class="section-divider"></div>`;
     html += `<div class="section-label ${hasSection ? "" : "first"}">My Contacts</div>`;
     savedOnline.forEach(u => { html += renderContactCard(u, idx++, false); });
     savedOffline.forEach(u => { html += renderContactCard(u, idx++, true); });
@@ -4575,7 +4674,6 @@ function renderContacts(filter = "") {
   }
 
   if (hasOthers) {
-    if (hasSection) html += `<div class="section-divider"></div>`;
     html += `<div class="section-label ${hasSection ? "" : "first"}">Everyone Online</div>`;
     everyoneElse.forEach(u => { html += renderContactCard(u, idx++, false); });
   }
@@ -4690,7 +4788,7 @@ async function callUser(userId, name, avatar) {
     if (existing) existing.remove();
     const overlay = document.createElement("div");
     overlay.id = "prepay-overlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:center;justify-content:center;";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:center;justify-content:center;";
     overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); startCall(userId, 0); } };
     const mins = Math.floor(pairCredit / 60);
     const card = document.createElement("div");
@@ -4738,7 +4836,8 @@ window.tipCallPartner = function() {
 function endCurrentCall() {
   if (currentCallId) socket.emit("end-call", { callId: currentCallId });
   const remote = currentRemote;
-  const duration = CALL_DURATION - timeLeft;
+  lastCallRemote = remote; // preserve for "Call Again" button (cleanup nulls currentRemote)
+  const duration = callDurationTotal - timeLeft;
   const wasPrivate = !!privateRoomId || !!privateRoomRole;
   cleanup();
   if (remote) setupEndedUI(remote.name, remote.avatar, `Call with ${remote.name} ended`, duration, wasPrivate ? 0 : undefined);
@@ -4921,8 +5020,12 @@ function connectSocket() {
     const streamLink = localStorage.getItem("om_streamLink");
     const postLink = localStorage.getItem("om_postLink");
     const gateLink = localStorage.getItem("om_gateLink");
+    const coinLink = localStorage.getItem("om_coinLink");
 
-    if (gateLink) {
+    if (coinLink) {
+      localStorage.removeItem("om_coinLink");
+      setTimeout(() => showTokenChart(coinLink), 500);
+    } else if (gateLink) {
       localStorage.removeItem("om_gateLink");
       setTimeout(() => showGateScreen(gateLink), 500);
     } else if (privateRoomId) {
@@ -5051,6 +5154,8 @@ function connectSocket() {
 
   socket.on("online-count", (count) => {
     $("#online-count-num").textContent = count;
+    const ocEl = document.getElementById("online-count");
+    if (ocEl) ocEl.style.display = count > 0 ? "" : "none";
   });
 
   socket.on("contacts-list", (contacts) => {
@@ -5065,6 +5170,10 @@ function connectSocket() {
 
   // Caller flow
   socket.on("call-ringing", ({ callId }) => { currentCallId = callId; });
+
+  socket.on("credit-warning", ({ message }) => {
+    showToast(message || "Credit issue", "error", 4000);
+  });
 
   socket.on("call-accepted", async ({ callId, duration }) => {
     currentCallId = callId;
@@ -5179,6 +5288,7 @@ function connectSocket() {
   // Call end
   socket.on("call-timeout", ({ creditEarned }) => {
     const remote = currentRemote;
+    lastCallRemote = remote; // preserve for "Call Again" button
     const wasPrivate = !!privateRoomId || !!privateRoomRole;
     cleanup();
     const durLabel = callDurationTotal > 60 ? `${Math.round(callDurationTotal / 60)} minutes` : "60 seconds";
@@ -5482,7 +5592,7 @@ function connectSocket() {
     if (existing) existing.remove();
     const overlay = document.createElement("div");
     overlay.id = "followers-overlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     const card = document.createElement("div");
     card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;width:320px;max-width:90vw;max-height:60vh;overflow-y:auto;";
@@ -5684,6 +5794,8 @@ function connectSocket() {
 
   // ── Notifications ─────────────────────────────────────────────────────
   socket.on("notifications", ({ notifications, unreadCount }) => {
+    // Populate seen IDs to prevent duplication with real-time events
+    notifSeenIds = new Set((notifications || []).map(n => n.id).filter(Boolean));
     updateNotifBadge(unreadCount);
     renderNotifications(notifications);
   });
@@ -5700,6 +5812,23 @@ function connectSocket() {
 
   socket.on("buy-time-error", ({ message }) => {
     showToast(message || "Purchase failed", "error");
+  });
+
+  socket.on("time-gifted", ({ toName, seconds, creditSeconds, remainingPersonal }) => {
+    showToast(`Gifted ${seconds}s to ${toName} (${creditSeconds}s pair credit)`, "success", 3000);
+    // Update local stats
+    if (myStats) myStats.creditSeconds = remainingPersonal;
+    // Update the profile display inline
+    const el = document.getElementById("profile-pair-credit");
+    if (el) el.textContent = creditSeconds + "s";
+    const container = document.getElementById("gift-time-inline");
+    if (container) container.style.display = "none";
+  });
+
+  socket.on("gift-time-error", ({ message }) => {
+    showToast(message || "Gift failed", "error");
+    const container = document.getElementById("gift-time-inline");
+    if (container) container.style.display = "none";
   });
 
   socket.on("call-rate-set", ({ callRate }) => {
@@ -5795,7 +5924,7 @@ function connectSocket() {
     if (existing) existing.remove();
     const overlay = document.createElement("div");
     overlay.id = "group-info-overlay";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     const isAdmin = info.creator === myName?.toLowerCase().trim();
     const card = document.createElement("div");
@@ -5805,6 +5934,7 @@ function connectSocket() {
         <div style="font-size:14px;font-weight:600;">${escapeHtml(info.name)}</div>
         <button onclick="this.closest('#group-info-overlay').remove()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1;">&times;</button>
       </div>
+      ${info.description ? `<div style="font-size:12px;color:var(--text);margin-bottom:10px;line-height:1.4;">${escapeHtml(info.description)}</div>` : ""}
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">${info.members.length} member${info.members.length !== 1 ? "s" : ""} · Created by ${escapeHtml(info.creator)}</div>
       ${isAdmin ? `<div style="display:flex;gap:6px;margin-bottom:12px;">
         <button onclick="renameGroup('${info.id}')" style="flex:1;padding:6px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">Rename</button>
@@ -5851,11 +5981,95 @@ function connectSocket() {
     if (socket) socket.emit("get-my-gated-rooms");
   });
 
+  // ── Coin launchpad listeners ──────────────────────────────────────────
+  socket.on("user-tokens", ({ username, tokens }) => {
+    // Add coin link to profile name if viewing this user's profile
+    if (profileTarget && username.toLowerCase() === profileTarget.toLowerCase() && tokens?.length > 0) {
+      const nameEl = document.getElementById("profile-name");
+      if (nameEl && !nameEl.querySelector(".profile-coin-link")) {
+        const t = tokens[0];
+        const link = document.createElement("span");
+        link.className = "profile-coin-link";
+        link.style.cssText = "cursor:pointer;margin-left:6px;font-size:14px;";
+        link.title = `$${t.symbol}`;
+        link.textContent = "\uD83E\uDE99"; // coin emoji
+        link.onclick = (e) => { e.stopPropagation(); showTokenChart(t.tokenAddress); };
+        nameEl.appendChild(link);
+      }
+    }
+    // Render coins list
+    const coinsList = document.getElementById("profile-coins-list");
+    if (coinsList && coinsList.style.display !== "none") {
+      if (!tokens || tokens.length === 0) {
+        coinsList.innerHTML = '<div class="post-empty">No coins launched yet</div>';
+      } else {
+        coinsList.innerHTML = tokens.map(t => renderCoinCard(t)).join("");
+        tokens.forEach(t => {
+          if (t.chainData?.observations) {
+            const canvas = document.querySelector(`.coin-mini-chart[data-token="${t.tokenAddress}"]`);
+            if (canvas) drawMiniChart(canvas, t.chainData.observations);
+          }
+        });
+      }
+    }
+  });
+
+  socket.on("token-chart", (data) => {
+    // Update mini chart if visible on profile
+    const miniCanvas = document.querySelector(`.coin-mini-chart[data-token="${data.tokenAddress}"]`);
+    if (miniCanvas && data.observations) drawMiniChart(miniCanvas, data.observations);
+    // Update full chart if overlay is open
+    const fullCanvas = document.getElementById("token-chart-canvas");
+    if (fullCanvas) handleTokenChart(data);
+  });
+
+  socket.on("token-info", (data) => {
+    handleTokenInfo(data);
+  });
+
+  socket.on("new-token-launched", (token) => {
+    if (token.creator !== (myName || "").toLowerCase()) {
+      showToast(`New coin: $${token.symbol} by ${token.creator}`, "info");
+    }
+  });
+
+  socket.on("token-holders", ({ tokenAddress, holders }) => {
+    if (_chartTokenAddress === tokenAddress) {
+      const curve = document.getElementById("chart-curve-stats")?.dataset?.sold;
+      renderHoldersList(holders, curve);
+    }
+  });
+
+  socket.on("token-activity", ({ tokenAddress, trades }) => {
+    if (_chartTokenAddress === tokenAddress) renderActivityList(trades);
+  });
+
+  socket.on("token-earnings", ({ tokenAddress, totalETH, totalTrades, totalBuys, totalSells }) => {
+    if (_chartTokenAddress !== tokenAddress) return;
+    const el = document.getElementById("chart-earnings");
+    if (!el) return;
+    if (totalTrades === 0) { el.style.display = "none"; return; }
+    el.style.display = "block";
+    el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;"><span style="color:var(--text-muted);">Creator earnings</span><span style="font-weight:600;color:#4CAF50;">${totalETH} ETH</span></div><div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${totalTrades} trades (${totalBuys} buys, ${totalSells} sells)</div>`;
+  });
+
+  socket.on("token-trade", (trade) => {
+    if (_chartTokenAddress === trade.tokenAddress) {
+      // Prepend to activity list if visible
+      const actEl = document.getElementById("chart-activity-list");
+      if (actEl && document.getElementById("coin-section-activity")?.style.display !== "none") {
+        renderActivityList([trade, ...(actEl._trades || [])]);
+        actEl._trades = [trade, ...(actEl._trades || [])].slice(0, 50);
+      }
+    }
+  });
+
   socket.on("gated-room-joined", ({ roomId, name }) => {
     document.getElementById("gate-overlay")?.remove();
     showToast(`Joined "${name}"`, "success");
     if (socket) socket.emit("get-my-gated-rooms");
-    setTimeout(() => openGatedRoomChat(roomId), 300);
+    // Don't navigate away if on coin page (auto-joined from buy)
+    if (!_chartTokenAddress) setTimeout(() => openGatedRoomChat(roomId), 300);
   });
 
   socket.on("gated-room-left", ({ roomId }) => {
@@ -5893,6 +6107,9 @@ function connectSocket() {
     if (activeGatedRoomId === roomId) appendGroupMsg(msg, null);
     const r = myGatedRooms.find(r => r.id === roomId);
     if (r) { r.lastMessage = (msg.text || "").slice(0, 50); r.lastSender = msg.senderName; r.lastTime = msg.ts; }
+    // Also render in chart overlay chat if open for this room
+    const overlay = document.getElementById("token-chart-overlay");
+    if (overlay?.dataset?.roomId === roomId) appendChartChatMsg(msg);
   });
 
   socket.on("gated-room-history", ({ roomId, messages, hasMore }) => {
@@ -5900,6 +6117,12 @@ function connectSocket() {
       if (activeGatedRoomId === roomId) {
         const container = $("#dm-messages");
         if (container.querySelector(".dm-empty")) container.innerHTML = '<div class="dm-empty">Start the conversation...</div>';
+      }
+      // Also handle empty for chart overlay
+      const overlay = document.getElementById("token-chart-overlay");
+      if (overlay?.dataset?.roomId === roomId) {
+        const chatEl = document.getElementById("chart-chat-messages");
+        if (chatEl) chatEl.innerHTML = '<div style="color:var(--text-muted);font-size:11px;text-align:center;padding:8px;">No messages yet</div>';
       }
       return;
     }
@@ -5912,6 +6135,16 @@ function connectSocket() {
       container.innerHTML = "";
       merged.forEach(m => appendGroupMsg(m, container));
       container.scrollTop = container.scrollHeight;
+    }
+    // Render in chart overlay chat
+    const overlay = document.getElementById("token-chart-overlay");
+    if (overlay?.dataset?.roomId === roomId) {
+      const chatEl = document.getElementById("chart-chat-messages");
+      if (chatEl) {
+        chatEl.innerHTML = "";
+        merged.slice(-30).forEach(m => appendChartChatMsg(m));
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
     }
   });
 
@@ -5932,7 +6165,8 @@ function connectSocket() {
       container.innerHTML = "";
       chatHistory.forEach(msg => renderChatMsg(msg, container));
     }
-    // Notifications
+    // Notifications — rebuild seen IDs to prevent duplication with real-time events
+    notifSeenIds = new Set((notifications || []).map(n => n.id).filter(Boolean));
     updateNotifBadge(unreadCount || 0);
     renderNotifications(notifications || []);
     // Social score
@@ -5959,6 +6193,9 @@ function connectSocket() {
   });
 
   socket.on("new-notification", (notif) => {
+    // Dedup: skip if we already processed this notification (e.g., reconnection race)
+    if (notif.id && notifSeenIds.has(notif.id)) return;
+    if (notif.id) notifSeenIds.add(notif.id);
     notifUnread++;
     updateNotifBadge(notifUnread);
     playNotifSound();
@@ -5971,6 +6208,8 @@ function connectSocket() {
     else if (notif.type === "follow") showToast(`${notif.fromUser} followed you`, "success", 2000);
     else if (notif.type === "repost") showToast(`${notif.fromUser} reposted your post`, "info", 2000);
     else if (notif.type === "tip") showToast(`💰 ${notif.fromUser} tipped you ${notif.preview}!`, "success", 5000);
+    else if (notif.type === "coin_trade") showToast(`🪙 ${notif.preview}`, "success", 4000);
+    else if (notif.type === "gift") showToast(`${notif.fromUser} gifted you call time`, "success", 3000);
   });
 
   socket.on("poke", ({ fromUserId, fromName, fromAvatar }) => {
@@ -6154,8 +6393,8 @@ $("#wallet-login-btn").addEventListener("click", () => {
   showWalletModal();
 });
 
-// Link wallet (for X-authenticated users)
-$("#link-wallet-btn").addEventListener("click", () => {
+// Link wallet (callable from profile page)
+function startWalletLink() {
   if (!document.getElementById('walletBtn')) {
     walletInit({ appName: 'minimeet.cc' });
   }
@@ -6181,12 +6420,12 @@ $("#link-wallet-btn").addEventListener("click", () => {
   }]);
 
   showWalletModal();
-});
+}
 
-// Link X (for wallet-authenticated users)
-$("#link-x-btn").addEventListener("click", () => {
+// Link X (callable from profile page)
+function startXLink() {
   window.location.href = '/auth/x';
-});
+}
 
 // ── Linkify (for bio + post text) ────────────────────────────────────────
 
@@ -6196,7 +6435,7 @@ function linkify(text) {
   let result = escaped.replace(/(https?:\/\/[^\s<]+)/g, (url) => {
     let display = url.replace(/^https?:\/\//, "").replace(/\/$/, "");
     if (display.length > 35) display = display.slice(0, 32) + "...";
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${display}</a>`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${display}</a>`;
   });
   // @mentions — link to profile (supports letters, numbers, dots, underscores, hyphens)
   result = result.replace(/(^|[\s>])@([a-zA-Z0-9._-]{1,30})/g, (match, prefix, name) => {
@@ -6218,28 +6457,721 @@ window.copyPostLink = function(postId) {
 window.switchProfileTab = function(tab) {
   const postsTab = document.getElementById("profile-tab-posts");
   const repliesTab = document.getElementById("profile-tab-replies");
-  const list = document.getElementById("profile-posts-list");
-  if (!postsTab || !repliesTab || !list) return;
-  if (tab === "posts") {
-    postsTab.classList.add("active");
-    postsTab.style.borderBottomColor = "var(--text)";
-    postsTab.style.color = "var(--text)";
-    repliesTab.classList.remove("active");
-    repliesTab.style.borderBottomColor = "transparent";
-    repliesTab.style.color = "var(--text-muted)";
-    list.innerHTML = '<div class="post-empty">Loading...</div>';
-    if (socket && profileTarget) socket.emit("get-user-posts", { username: profileTarget });
+  const coinsTab = document.getElementById("profile-tab-coins");
+  const postsList = document.getElementById("profile-posts-list");
+  const coinsList = document.getElementById("profile-coins-list");
+  const compose = document.getElementById("profile-compose");
+  if (!postsTab || !repliesTab || !postsList) return;
+  // Reset all tabs — CSS .active class handles styling
+  [postsTab, repliesTab, coinsTab].forEach(t => { if (t) t.classList.remove("active"); });
+  if (tab === "coins") {
+    if (coinsTab) coinsTab.classList.add("active");
+    postsList.style.display = "none";
+    if (compose) compose.style.display = "none";
+    if (coinsList) { coinsList.style.display = "block"; coinsList.innerHTML = '<div class="post-empty">Loading...</div>'; }
+    if (socket && profileTarget) socket.emit("get-user-tokens", { username: profileTarget });
   } else {
-    repliesTab.classList.add("active");
-    repliesTab.style.borderBottomColor = "var(--text)";
-    repliesTab.style.color = "var(--text)";
-    postsTab.classList.remove("active");
-    postsTab.style.borderBottomColor = "transparent";
-    postsTab.style.color = "var(--text-muted)";
-    list.innerHTML = '<div class="post-empty">Loading...</div>';
-    if (socket && profileTarget) socket.emit("get-user-replies", { username: profileTarget });
+    postsList.style.display = "block";
+    if (compose) compose.style.display = "";
+    if (coinsList) coinsList.style.display = "none";
+    if (tab === "posts") {
+      postsTab.classList.add("active");
+      postsList.innerHTML = '<div class="post-empty">Loading...</div>';
+      if (socket && profileTarget) socket.emit("get-user-posts", { username: profileTarget });
+    } else {
+      repliesTab.classList.add("active");
+      postsList.innerHTML = '<div class="post-empty">Loading...</div>';
+      if (socket && profileTarget) socket.emit("get-user-replies", { username: profileTarget });
+    }
   }
 };
+
+// ── Coins tab rendering + chart ─────────────────────────────────────────────
+
+function coinPriceChange(chainData) {
+  if (!chainData?.observations?.length) return null;
+  const obs = chainData.observations;
+  const first = Number(BigInt(obs[0].price));
+  const last = Number(BigInt(obs[obs.length - 1].price));
+  if (first === 0) return null;
+  const pct = ((last - first) / first) * 100;
+  return { pct, last: last / 1e18, isUp: last >= first };
+}
+
+function formatPct(pct) {
+  const abs = Math.abs(pct);
+  if (abs >= 1000) return (pct > 0 ? "+" : "") + (pct / 1000).toFixed(1) + "k%";
+  if (abs >= 100) return (pct > 0 ? "+" : "") + pct.toFixed(0) + "%";
+  return (pct > 0 ? "+" : "") + pct.toFixed(1) + "%";
+}
+
+function renderCoinCard(token) {
+  const addr = token.tokenAddress;
+  const shortAddr = addr.slice(0, 6) + "..." + addr.slice(-4);
+  // Use creator's live avatar — look up from online users or cached meta
+  const creator = token.creator || "";
+  const onlineCreator = users.find(u => u.name.toLowerCase() === creator);
+  const creatorAvatar = onlineCreator?.avatar || getCachedMeta(creator)?.avatar || null;
+  const imgStyle = creatorAvatar ? `background:${safeCssUrl(creatorAvatar)} center/cover;` : `background:${getColor(token.name)};display:flex;align-items:center;justify-content:center;`;
+  const imgInner = creatorAvatar ? "" : `<span style="font-size:11px;font-weight:700;color:#fff">${escapeHtml(token.name.slice(0,2))}</span>`;
+  const ago = formatTimeAgo(token.createdAt);
+  const change = coinPriceChange(token.chainData);
+  const priceHtml = change
+    ? `<span style="font-size:11px;font-weight:600;color:${change.isUp ? '#4CAF50' : '#EF5350'};margin-left:auto;white-space:nowrap;">${formatPct(change.pct)}</span>`
+    : "";
+  // Show price per 1M tokens for readability with large supplies
+  const priceLabel = change ? `<span style="font-size:10px;color:var(--text-muted);">${formatEthPrice(change.last * 1e6)} ETH/1M</span>` : "";
+  return `<div class="coin-card" onclick="showTokenChart('${escapeJSAttr(addr)}')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s;" onmouseover="this.style.background='var(--surface-hover)'" onmouseout="this.style.background=''">
+    <div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;overflow:hidden;${imgStyle}">${imgInner}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:baseline;gap:6px;">
+        <span style="font-weight:600;font-size:13px;">${escapeHtml(token.name)}</span>
+        <span style="color:var(--text-muted);font-size:11px;">$${escapeHtml(token.symbol)}</span>
+        ${priceHtml}
+      </div>
+      ${token.description ? `<div style="font-size:11px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(token.description)}</div>` : ""}
+      <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
+        ${priceLabel ? priceLabel + " &middot; " : ""}${shortAddr} &middot; ${ago}
+        ${token.roomId ? ` &middot; <span onclick="event.stopPropagation();showGateScreen('${escapeJSAttr(token.roomId)}')" style="color:#4CAF50;cursor:pointer;">chat</span>` : ""}
+      </div>
+    </div>
+    <canvas class="coin-mini-chart" data-token="${escapeHtml(addr)}" width="80" height="32" style="flex-shrink:0;"></canvas>
+  </div>`;
+}
+
+function formatTimeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
+}
+
+function drawMiniChart(canvas, observations) {
+  if (!observations || observations.length < 2) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const prices = observations.map(o => Number(BigInt(o.price)) / 1e18);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = max - min || 1;
+  const isUp = prices[prices.length - 1] >= prices[0];
+  ctx.strokeStyle = isUp ? "#4CAF50" : "#EF5350";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < prices.length; i++) {
+    const x = (i / (prices.length - 1)) * w;
+    const y = h - ((prices[i] - min) / range) * (h - 4) - 2;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+// Show full token chart overlay
+let _chartTokenAddress = null;
+window.showTokenChart = function(tokenAddress) {
+  _chartTokenAddress = tokenAddress;
+  const existing = document.getElementById("token-chart-overlay");
+  if (existing) existing.remove();
+  window.history.pushState({ coin: tokenAddress }, "", `/?coin=${tokenAddress}`);
+  const overlay = document.createElement("div");
+  overlay.id = "token-chart-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:var(--bg);z-index:260;overflow-y:auto;-webkit-overflow-scrolling:touch;";
+  const card = document.createElement("div");
+  card.style.cssText = "max-width:480px;margin:0 auto;padding:16px;box-sizing:border-box;";
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div id="chart-token-name" style="font-size:15px;font-weight:600;">Loading...</div>
+      <button onclick="document.getElementById('token-chart-overlay')?.remove();_chartTokenAddress=null;window.history.pushState({},'','/')" style="background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:4px 8px;line-height:1;font-family:var(--font-mono);">&larr; Back</button>
+    </div>
+    <div id="chart-token-info" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;"></div>
+    <div id="chart-price-header" style="margin-bottom:10px;display:flex;align-items:baseline;"></div>
+    <canvas id="token-chart-canvas" width="440" height="180" style="width:100%;height:180px;border-radius:6px;background:var(--surface-hover);margin-bottom:12px;"></canvas>
+    <div id="chart-curve-stats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;"></div>
+    <div id="chart-earnings" style="display:none;margin-top:8px;padding:8px;background:var(--surface-hover);border-radius:6px;font-size:11px;"></div>
+    <div id="chart-graduate" style="display:none;margin-top:12px;"></div>
+    <div id="chart-trade" style="margin-top:14px;">
+      <div style="display:flex;gap:0;margin-bottom:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <button id="trade-buy-tab" onclick="switchTradeTab('buy')" style="flex:1;padding:8px;background:#4CAF50;border:none;color:#fff;font-size:12px;font-weight:600;font-family:var(--font-mono);cursor:pointer;">Buy</button>
+        <button id="trade-sell-tab" onclick="switchTradeTab('sell')" style="flex:1;padding:8px;background:transparent;border:none;color:var(--text-muted);font-size:12px;font-weight:600;font-family:var(--font-mono);cursor:pointer;">Sell</button>
+      </div>
+      <div id="trade-buy-panel">
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <input id="trade-buy-amount" type="text" inputmode="decimal" placeholder="0.00" style="flex:1;padding:8px 10px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:16px;font-family:var(--font-mono);box-sizing:border-box;outline:none;" oninput="previewBuyQuote()">
+          <span style="font-size:12px;color:var(--text-muted);align-self:flex-end;padding-bottom:10px;">ETH</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:8px;">
+          <button onclick="document.getElementById('trade-buy-amount').value='0.005';previewBuyQuote()" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">.005</button>
+          <button onclick="document.getElementById('trade-buy-amount').value='0.01';previewBuyQuote()" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">.01</button>
+          <button onclick="document.getElementById('trade-buy-amount').value='0.05';previewBuyQuote()" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">.05</button>
+          <button onclick="document.getElementById('trade-buy-amount').value='0.1';previewBuyQuote()" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">.1</button>
+        </div>
+        <div id="trade-buy-quote" style="font-size:11px;color:var(--text-muted);margin-bottom:6px;min-height:16px;"></div>
+        <button id="trade-buy-btn" onclick="executeBuy()" style="width:100%;padding:10px;background:#4CAF50;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;font-family:var(--font-mono);cursor:pointer;">Buy</button>
+      </div>
+      <div id="trade-sell-panel" style="display:none;">
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <input id="trade-sell-amount" type="text" inputmode="decimal" placeholder="0" style="flex:1;padding:8px 10px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:16px;font-family:var(--font-mono);box-sizing:border-box;outline:none;" oninput="previewSellQuote()">
+          <span style="font-size:12px;color:var(--text-muted);align-self:flex-end;padding-bottom:10px;">tokens</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:8px;">
+          <button onclick="setSellPct(25)" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">25%</button>
+          <button onclick="setSellPct(50)" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">50%</button>
+          <button onclick="setSellPct(75)" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">75%</button>
+          <button onclick="setSellPct(100)" style="flex:1;padding:5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">Max</button>
+        </div>
+        <div id="trade-sell-quote" style="font-size:11px;color:var(--text-muted);margin-bottom:6px;min-height:16px;"></div>
+        <button id="trade-sell-btn" onclick="executeSell()" style="width:100%;padding:10px;background:#EF5350;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;font-family:var(--font-mono);cursor:pointer;">Sell</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:8px;">
+        <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">Slippage</span>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;align-items:center;">
+          <button onclick="setSlippage(1)" id="slip-1" class="slip-btn" style="padding:4px 7px;background:var(--surface-hover);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">1%</button>
+          <button onclick="setSlippage(3)" id="slip-3" class="slip-btn" style="padding:4px 7px;background:var(--text);border:1px solid var(--text);border-radius:4px;color:var(--bg);font-size:10px;font-family:var(--font-mono);cursor:pointer;">3%</button>
+          <button onclick="setSlippage(5)" id="slip-5" class="slip-btn" style="padding:4px 7px;background:var(--surface-hover);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">5%</button>
+          <button onclick="setSlippage(10)" id="slip-10" class="slip-btn" style="padding:4px 7px;background:var(--surface-hover);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:10px;font-family:var(--font-mono);cursor:pointer;">10%</button>
+          <input id="slip-custom" type="text" inputmode="decimal" placeholder="%" maxlength="4" style="width:32px;padding:4px 5px;background:var(--surface-hover);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:10px;font-family:var(--font-mono);text-align:center;outline:none;box-sizing:border-box;" oninput="const v=parseFloat(this.value);if(v>0&&v<=50){_slippageBps=Math.round(v*100);document.querySelectorAll('.slip-btn').forEach(b=>{b.style.background='var(--surface-hover)';b.style.borderColor='var(--border)';b.style.color='var(--text-muted)'});}">
+        </div>
+      </div>
+      <div id="trade-status" style="display:none;font-size:11px;color:var(--text-muted);text-align:center;margin-top:6px;"></div>
+    </div>
+    <div id="chart-actions" style="margin-top:10px;display:flex;gap:8px;"></div>
+    <div style="margin-top:12px;">
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);">
+        <button class="coin-section-tab active" onclick="switchCoinSection('chat')" id="coin-tab-chat" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid var(--text);color:var(--text);font-size:11px;font-family:var(--font-mono);cursor:pointer;">Chat</button>
+        <button class="coin-section-tab" onclick="switchCoinSection('holders')" id="coin-tab-holders" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">Holders</button>
+        <button class="coin-section-tab" onclick="switchCoinSection('activity')" id="coin-tab-activity" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">Activity</button>
+      </div>
+      <div id="coin-section-chat" style="padding-top:10px;">
+        <div id="chart-chat-messages" style="min-height:60px;max-height:300px;overflow-y:auto;margin-bottom:8px;font-size:12px;"></div>
+        <div style="display:flex;gap:6px;">
+          <input id="chart-chat-input" type="text" placeholder="Say something..." maxlength="500" style="flex:1;padding:8px 10px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;font-family:var(--font-mono);box-sizing:border-box;" onkeydown="if(event.key==='Enter')sendChartChat()">
+          <button onclick="sendChartChat()" style="padding:8px 14px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Send</button>
+        </div>
+      </div>
+      <div id="coin-section-holders" style="display:none;padding-top:10px;">
+        <div id="chart-holders-list" style="max-height:350px;overflow-y:auto;font-size:12px;"></div>
+      </div>
+      <div id="coin-section-activity" style="display:none;padding-top:10px;">
+        <div id="chart-activity-list" style="max-height:350px;overflow-y:auto;font-size:12px;"></div>
+      </div>
+    </div>
+  `;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  if (socket) {
+    socket.emit("get-token-info", { tokenAddress });
+    socket.emit("get-token-chart", { tokenAddress });
+    socket.emit("get-token-holders", { tokenAddress });
+    socket.emit("get-token-activity", { tokenAddress });
+    socket.emit("get-token-earnings", { tokenAddress });
+  }
+};
+
+let _tradeMode = "buy";
+let _slippageBps = 300; // 3% default
+let _userTokenBalance = null;
+let _quoteTimer = null;
+
+window.switchTradeTab = function(tab) {
+  _tradeMode = tab;
+  const buyTab = document.getElementById("trade-buy-tab"), sellTab = document.getElementById("trade-sell-tab");
+  const buyPanel = document.getElementById("trade-buy-panel"), sellPanel = document.getElementById("trade-sell-panel");
+  if (tab === "buy") {
+    buyTab.style.background = "#4CAF50"; buyTab.style.color = "#fff";
+    sellTab.style.background = "transparent"; sellTab.style.color = "var(--text-muted)";
+    buyPanel.style.display = ""; sellPanel.style.display = "none";
+  } else {
+    sellTab.style.background = "#EF5350"; sellTab.style.color = "#fff";
+    buyTab.style.background = "transparent"; buyTab.style.color = "var(--text-muted)";
+    sellPanel.style.display = ""; buyPanel.style.display = "none";
+    _fetchTokenBalance();
+  }
+};
+
+window.setSlippage = function(pct) {
+  _slippageBps = pct * 100;
+  document.querySelectorAll(".slip-btn").forEach(b => {
+    const active = b.id === "slip-" + pct;
+    b.style.background = active ? "var(--text)" : "var(--surface-hover)";
+    b.style.borderColor = active ? "var(--text)" : "var(--border)";
+    b.style.color = active ? "var(--bg)" : "var(--text-muted)";
+  });
+  const custom = document.getElementById("slip-custom");
+  if (custom) custom.value = "";
+};
+
+const _READ_RPCS = ["https://ethereum.publicnode.com", "https://eth.drpc.org", "https://1rpc.io/eth", "https://eth.merkle.io", "https://eth.llamarpc.com"];
+let _qProviderIdx = 0;
+let _qProviderCache = null;
+function _qProvider() {
+  if (!_qProviderCache) _qProviderCache = new ethers.JsonRpcProvider(_READ_RPCS[_qProviderIdx], 1, { staticNetwork: true });
+  return _qProviderCache;
+}
+function _qProviderRotate() {
+  _qProviderCache = null;
+  _qProviderIdx = (_qProviderIdx + 1) % _READ_RPCS.length;
+}
+function _deadline() { return Math.floor(Date.now() / 1000) + 600; }
+
+async function _getCurveSnapshot() {
+  for (let i = 0; i < _READ_RPCS.length; i++) {
+    try {
+      const sale = new ethers.Contract(CURVE_SALE_ADDRESS, CURVE_SALE_LAUNCH_ABI, _qProvider());
+      return await sale.curves(_chartTokenAddress);
+    } catch { _qProviderRotate(); }
+  }
+  throw new Error("All RPCs failed");
+}
+
+window.previewBuyQuote = function() {
+  clearTimeout(_quoteTimer);
+  const quoteEl = document.getElementById("trade-buy-quote");
+  const val = parseFloat(document.getElementById("trade-buy-amount")?.value);
+  if (!quoteEl) return;
+  if (!val || val <= 0) { quoteEl.textContent = ""; return; }
+  quoteEl.textContent = "...";
+  _quoteTimer = setTimeout(async () => {
+    try {
+      const c = await _getCurveSnapshot();
+      const ethWei = ethers.parseEther(String(val));
+      const feeBps = Number(c[6]);
+      const netETH = ethWei * 10000n / BigInt(10000 + feeBps);
+      const rem = c[3] - c[2]; // vr - sold
+      const price = c[4] * c[3] * c[3] / (rem * rem);
+      const tokens = netETH * 10n**18n / price;
+      quoteEl.innerHTML = `~${(Number(tokens)/1e18).toLocaleString(undefined,{maximumFractionDigits:0})} tokens`;
+    } catch { quoteEl.textContent = ""; }
+  }, 300);
+};
+
+window.previewSellQuote = function() {
+  clearTimeout(_quoteTimer);
+  const quoteEl = document.getElementById("trade-sell-quote");
+  const val = parseFloat(document.getElementById("trade-sell-amount")?.value);
+  if (!quoteEl) return;
+  if (!val || val <= 0) { quoteEl.textContent = ""; return; }
+  quoteEl.textContent = "...";
+  _quoteTimer = setTimeout(async () => {
+    try {
+      const c = await _getCurveSnapshot();
+      const amount = ethers.parseUnits(String(Math.floor(val)), 18);
+      const rem = c[3] - c[2];
+      const price = c[4] * c[3] * c[3] / (rem * rem);
+      const feeBps = Number(c[6]);
+      const gross = amount * price / 10n**18n;
+      const net = gross * BigInt(10000 - feeBps) / 10000n;
+      quoteEl.innerHTML = `~${(Number(net)/1e18).toFixed(6)} ETH`;
+    } catch { quoteEl.textContent = ""; }
+  }, 300);
+};
+
+async function _fetchTokenBalance() {
+  if (!_chartTokenAddress) return;
+  const addr = walletState?.address || window._connectedAddress || myAppWallet?.address || myWalletAddress;
+  if (!addr) return;
+  for (let i = 0; i < _READ_RPCS.length; i++) {
+    try {
+      const token = new ethers.Contract(_chartTokenAddress, ["function balanceOf(address) view returns (uint256)"], _qProvider());
+      _userTokenBalance = await token.balanceOf(addr);
+      return;
+    } catch { _qProviderRotate(); }
+  }
+  _userTokenBalance = null;
+}
+
+window.setSellPct = function(pct) {
+  if (!_userTokenBalance || _userTokenBalance === 0n) {
+    _fetchTokenBalance().then(() => {
+      if (_userTokenBalance && _userTokenBalance > 0n) { _doSellPct(pct); }
+      else showToast("No tokens", "info");
+    });
+    return;
+  }
+  _doSellPct(pct);
+};
+function _doSellPct(pct) {
+  if (!_userTokenBalance) return;
+  const amt = _userTokenBalance * BigInt(pct) / 100n;
+  document.getElementById("trade-sell-amount").value = (Number(amt) / 1e18).toFixed(0);
+  previewSellQuote();
+}
+
+async function _resolveSigner() {
+  let signer = window._signer || walletState?.signer || null;
+  if (!signer && myAppWallet?.privateKey) {
+    signer = new ethers.Wallet(myAppWallet.privateKey, _qProvider());
+  } else if (!signer && myAppWallet?.address && !myAppWallet?.privateKey) {
+    const stored = localStorage.getItem("mm_app_wallet");
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        if (data.ct) {
+          const pw = await promptPassword("Enter your password to unlock your app wallet:");
+          if (pw) { const w = await decryptWalletKey(data, pw); myAppWallet = w; signer = new ethers.Wallet(w.privateKey, _qProvider()); }
+        }
+      } catch { showToast("Wrong password", "error"); return null; }
+    }
+  }
+  if (!signer) { showToast("Connect a wallet first", "error"); if (typeof showWalletModal === "function") showWalletModal(); }
+  return signer;
+}
+
+window.executeBuy = async function() {
+  if (!_chartTokenAddress) return;
+  const val = parseFloat(document.getElementById("trade-buy-amount")?.value);
+  if (!val || val <= 0) { showToast("Enter an ETH amount", "error"); return; }
+  const signer = await _resolveSigner();
+  if (!signer) return;
+  const btn = document.getElementById("trade-buy-btn");
+  const statusEl = document.getElementById("trade-status");
+  btn.disabled = true; btn.textContent = "Quoting...";
+  statusEl.style.display = "block"; statusEl.textContent = "";
+  try {
+    const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
+    const value = ethers.parseEther(String(val));
+    // Compute minAmountOut with slippage
+    let minOut = 0n;
+    let approxTokens = 0n;
+    try {
+      const c = await _getCurveSnapshot();
+      if (c[12]) throw new Error("Curve graduated — trade on LP");
+      const feeBps = Number(c[6]);
+      const netETH = value * 10000n / BigInt(10000 + feeBps);
+      const rem = c[3] - c[2];
+      const price = c[4] * c[3] * c[3] / (rem * rem);
+      approxTokens = netETH * 10n**18n / price;
+      // Marginal price overestimates tokens (curve integral gives fewer). Apply 5% haircut before slippage.
+      minOut = approxTokens * 95n / 100n * BigInt(10000 - _slippageBps) / 10000n;
+    } catch (e) { if (e.message.includes("graduated")) { showToast(e.message, "info"); btn.disabled = false; btn.textContent = "Buy"; statusEl.style.display = "none"; return; } }
+    btn.textContent = "Confirm...";
+    const calldata = iface.encodeFunctionData("buyExactIn", [_chartTokenAddress, minOut, _deadline()]);
+    const tx = await signer.sendTransaction({ to: CURVE_SALE_ADDRESS, data: calldata, value });
+    btn.textContent = "Mining..."; statusEl.textContent = tx.hash.slice(0, 12) + "...";
+    await tx.wait();
+    showToast("Buy successful!", "success");
+    statusEl.style.display = "none";
+    document.getElementById("trade-buy-amount").value = "";
+    document.getElementById("trade-buy-quote").textContent = "";
+    _userTokenBalance = null;
+    if (socket) {
+      socket.emit("record-trade", { tokenAddress: _chartTokenAddress, type: "buy", ethAmount: String(val), tokenAmount: approxTokens.toString(), txHash: tx.hash });
+      socket.emit("get-token-chart", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-holders", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-activity", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-earnings", { tokenAddress: _chartTokenAddress });
+    }
+  } catch (err) {
+    const msg = err?.info?.error?.message || err?.reason || err?.message || "Buy failed";
+    showToast(msg.includes("lippage") ? "Price moved — increase slippage or retry" : msg, "error");
+    statusEl.style.display = "none";
+  }
+  btn.disabled = false; btn.textContent = "Buy";
+};
+
+window.executeSell = async function() {
+  if (!_chartTokenAddress) return;
+  const valStr = document.getElementById("trade-sell-amount")?.value?.trim();
+  const val = parseFloat(valStr);
+  if (!valStr || isNaN(val) || val <= 0) { showToast("Enter a token amount", "error"); return; }
+  const signer = await _resolveSigner();
+  if (!signer) return;
+  const btn = document.getElementById("trade-sell-btn");
+  const statusEl = document.getElementById("trade-status");
+  btn.disabled = true; btn.textContent = "Preparing...";
+  statusEl.style.display = "block"; statusEl.textContent = "";
+  try {
+    const provider = signer.provider || _qProvider();
+    const tokenContract = new ethers.Contract(_chartTokenAddress, ERC20_APPROVE_ABI.concat(["function balanceOf(address) view returns (uint256)"]), provider);
+    const addr = await signer.getAddress();
+    let amount = ethers.parseUnits(String(Math.floor(val)), 18);
+    const bal = await tokenContract.balanceOf(addr);
+    if (amount > bal) amount = bal;
+    if (amount === 0n) { showToast("No tokens to sell", "error"); btn.disabled = false; btn.textContent = "Sell"; statusEl.style.display = "none"; return; }
+    // Compute minProceeds with slippage
+    let minProceeds = 0n;
+    try {
+      const c = await _getCurveSnapshot();
+      if (c[12]) throw new Error("Curve graduated — trade on LP");
+      const rem = c[3] - c[2];
+      const price = c[4] * c[3] * c[3] / (rem * rem);
+      const feeBps = Number(c[6]);
+      const gross = amount * price / 10n**18n;
+      const net = gross * BigInt(10000 - feeBps) / 10000n;
+      // Marginal price overestimates proceeds (curve integral gives less). Apply 5% haircut before slippage.
+      minProceeds = net * 95n / 100n * BigInt(10000 - _slippageBps) / 10000n;
+    } catch (e) { if (e.message?.includes("graduated")) { showToast(e.message, "info"); btn.disabled = false; btn.textContent = "Sell"; statusEl.style.display = "none"; return; } }
+    // Approve
+    btn.textContent = "Approving...";
+    const tokenWithSigner = tokenContract.connect(signer);
+    const approveTx = await tokenWithSigner.approve(CURVE_SALE_ADDRESS, amount);
+    await approveTx.wait();
+    // Sell
+    btn.textContent = "Selling...";
+    const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
+    const calldata = iface.encodeFunctionData("sell", [_chartTokenAddress, amount, minProceeds, _deadline()]);
+    const tx = await signer.sendTransaction({ to: CURVE_SALE_ADDRESS, data: calldata });
+    btn.textContent = "Mining..."; statusEl.textContent = tx.hash.slice(0, 12) + "...";
+    await tx.wait();
+    showToast("Sell successful!", "success");
+    statusEl.style.display = "none";
+    document.getElementById("trade-sell-amount").value = "";
+    document.getElementById("trade-sell-quote").textContent = "";
+    _userTokenBalance = null;
+    if (socket) {
+      socket.emit("record-trade", { tokenAddress: _chartTokenAddress, type: "sell", tokenAmount: amount.toString(), ethAmount: (Number(minProceeds)/1e18).toFixed(6), txHash: tx.hash });
+      socket.emit("get-token-chart", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-holders", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-activity", { tokenAddress: _chartTokenAddress });
+      socket.emit("get-token-earnings", { tokenAddress: _chartTokenAddress });
+    }
+  } catch (err) {
+    const msg = err?.info?.error?.message || err?.reason || err?.message || "Sell failed";
+    showToast(msg.includes("lippage") ? "Price moved — increase slippage or retry" : msg, "error");
+    statusEl.style.display = "none";
+  }
+  btn.disabled = false; btn.textContent = "Sell";
+};
+
+window.sendChartChat = function() {
+  if (!_chartTokenAddress || !socket) return;
+  const input = document.getElementById("chart-chat-input");
+  const text = (input?.value || "").trim();
+  if (!text) return;
+  const roomId = document.getElementById("token-chart-overlay")?.dataset?.roomId;
+  if (!roomId) { showToast("Hold tokens to chat", "info"); return; }
+  socket.emit("gated-room-chat", { roomId, text });
+  input.value = "";
+};
+
+function appendChartChatMsg(msg) {
+  const chatEl = document.getElementById("chart-chat-messages");
+  if (!chatEl) return;
+  const el = document.createElement("div");
+  el.style.cssText = "padding:3px 0;";
+  const nameColor = getColor(msg.senderName || msg.sender);
+  const time = new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  el.innerHTML = `<span style="color:${nameColor};font-weight:600;cursor:pointer;" onclick="showProfile('${escapeJSAttr(msg.sender)}')">${escapeHtml(msg.senderName || msg.sender)}</span> <span style="color:var(--text-muted);font-size:10px;">${time}</span><div style="color:var(--text);margin-top:1px;">${escapeHtml(msg.text || "")}</div>`;
+  chatEl.appendChild(el);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+window.switchCoinSection = function(tab) {
+  ["chat", "holders", "activity"].forEach(t => {
+    const section = document.getElementById("coin-section-" + t);
+    const tabBtn = document.getElementById("coin-tab-" + t);
+    if (section) section.style.display = t === tab ? "" : "none";
+    if (tabBtn) {
+      tabBtn.style.borderBottomColor = t === tab ? "var(--text)" : "transparent";
+      tabBtn.style.color = t === tab ? "var(--text)" : "var(--text-muted)";
+    }
+  });
+  if (tab === "holders" && _chartTokenAddress && socket) socket.emit("get-token-holders", { tokenAddress: _chartTokenAddress });
+  if (tab === "activity" && _chartTokenAddress && socket) socket.emit("get-token-activity", { tokenAddress: _chartTokenAddress });
+};
+
+function renderHoldersList(holders, totalSold) {
+  const el = document.getElementById("chart-holders-list");
+  if (!el) return;
+  if (!holders || holders.length === 0) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:12px;">No holders yet</div>'; return; }
+  const circulating = totalSold ? BigInt(totalSold) : holders.reduce((s, h) => s + BigInt(h.balance), 0n);
+  el.innerHTML = holders.map((h, i) => {
+    const bal = BigInt(h.balance);
+    const pct = circulating > 0n ? Number(bal * 10000n / circulating) / 100 : 0;
+    const display = (Number(bal) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    const name = h.name || (h.address.slice(0, 6) + "..." + h.address.slice(-4));
+    const nameClick = h.name ? `onclick="showProfile('${escapeJSAttr(h.name)}')" style="cursor:pointer;color:${getColor(name)};font-weight:600;"` : `style="color:var(--text-muted);"`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border);">
+      <span style="color:var(--text-muted);font-size:10px;width:18px;text-align:right;">${i + 1}</span>
+      <span ${nameClick}>${escapeHtml(name)}</span>
+      <span style="margin-left:auto;font-family:var(--font-mono);font-size:11px;">${display}</span>
+      <span style="color:var(--text-muted);font-size:10px;width:42px;text-align:right;">${pct.toFixed(1)}%</span>
+    </div>`;
+  }).join("");
+}
+
+function renderActivityList(trades) {
+  const el = document.getElementById("chart-activity-list");
+  if (!el) return;
+  if (!trades || trades.length === 0) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:12px;">No trades yet</div>'; return; }
+  el.innerHTML = trades.map(t => {
+    const isBuy = t.type === "buy";
+    const color = isBuy ? "#4CAF50" : "#EF5350";
+    const label = isBuy ? "BUY" : "SELL";
+    const name = t.traderName || (t.trader.slice(0, 6) + "..." + t.trader.slice(-4));
+    const nameClick = t.traderName ? `onclick="showProfile('${escapeJSAttr(t.traderName)}')" style="cursor:pointer;font-weight:600;color:var(--text);"` : `style="color:var(--text-muted);"`;
+    const ethAmt = t.ethAmount ? parseFloat(t.ethAmount) : 0;
+    const ago = formatTimeAgo(t.createdAt);
+    const txLink = t.txHash ? `<a href="https://etherscan.io/tx/${escapeHtml(t.txHash)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;font-size:10px;">tx</a>` : "";
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid var(--border);font-size:12px;">
+      <span style="color:${color};font-weight:700;font-size:10px;width:28px;">${label}</span>
+      <span ${nameClick}>${escapeHtml(name)}</span>
+      <span style="margin-left:auto;font-family:var(--font-mono);font-size:11px;">${ethAmt > 0 ? ethAmt.toFixed(4) + ' ETH' : ''}</span>
+      <span style="color:var(--text-muted);font-size:10px;">${ago}</span>
+      ${txLink}
+    </div>`;
+  }).join("");
+}
+
+// Handle token chart data
+function handleTokenChart(data) {
+  const canvas = document.getElementById("token-chart-canvas");
+  if (!canvas || !data.observations) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const obs = data.observations;
+  if (obs.length < 2) {
+    ctx.fillStyle = "#666";
+    ctx.font = "12px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(obs.length === 0 ? "No trades yet" : "Waiting for more trades...", w / 2, h / 2 - 8);
+    ctx.fillStyle = "#444";
+    ctx.font = "10px monospace";
+    ctx.fillText("Be the first to buy", w / 2, h / 2 + 10);
+    // Draw faint placeholder curve
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const x = 10 + (i / 40) * (w - 20);
+      const t = i / 40;
+      const y = h - 10 - (t * t * 0.8) * (h - 30);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+  const prices = obs.map(o => Number(BigInt(o.price)) / 1e18);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = max - min || 1;
+  // Draw price line
+  ctx.strokeStyle = prices[prices.length - 1] >= prices[0] ? "#4CAF50" : "#EF5350";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < prices.length; i++) {
+    const x = 10 + (i / Math.max(prices.length - 1, 1)) * (w - 20);
+    const y = h - 10 - ((prices[i] - min) / range) * (h - 30);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  // Draw volume bars
+  const volumes = obs.map(o => Number(BigInt(o.volume)));
+  const maxVol = Math.max(...volumes) || 1;
+  ctx.globalAlpha = 0.15;
+  for (let i = 0; i < obs.length; i++) {
+    const x = 10 + (i / Math.max(obs.length - 1, 1)) * (w - 20);
+    const barH = (volumes[i] / maxVol) * (h * 0.3);
+    ctx.fillStyle = obs[i].isSell ? "#EF5350" : "#4CAF50";
+    ctx.fillRect(x - 1, h - barH, 3, barH);
+  }
+  ctx.globalAlpha = 1;
+  // Draw labels
+  ctx.fillStyle = "#888";
+  ctx.font = "9px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(formatEthPrice(max), 2, 12);
+  ctx.fillText(formatEthPrice(min), 2, h - 2);
+  // Price + change header
+  const lastPrice = prices[prices.length - 1];
+  const firstPrice = prices[0];
+  const changePct = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+  const isUp = lastPrice >= firstPrice;
+  const priceHeader = document.getElementById("chart-price-header");
+  if (priceHeader) {
+    // Show price per 1M tokens for readability with large supplies
+    const perMil = lastPrice * 1e6;
+    priceHeader.innerHTML = `
+      <span style="font-size:18px;font-weight:700;">${formatEthPrice(perMil)} ETH</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:2px;">per 1M</span>
+      <span style="font-size:13px;font-weight:600;color:${isUp ? '#4CAF50' : '#EF5350'};margin-left:8px;">${formatPct(changePct)}</span>
+    `;
+  }
+  // Curve stats
+  if (data.curve) {
+    const c = data.curve;
+    const statsEl = document.getElementById("chart-curve-stats");
+    if (statsEl) {
+      statsEl.dataset.sold = c.sold; // store for holders % calculation
+      const raised = (Number(BigInt(c.raisedETH)) / 1e18).toFixed(4);
+      const target = (Number(BigInt(c.graduationTarget)) / 1e18).toFixed(2);
+      const pct = c.graduationTarget !== "0" ? Math.min(100, (Number(BigInt(c.raisedETH)) / Number(BigInt(c.graduationTarget)) * 100)).toFixed(1) : "0";
+      const soldPct = c.cap !== "0" ? (Number(BigInt(c.sold)) / Number(BigInt(c.cap)) * 100).toFixed(1) : "0";
+      statsEl.innerHTML = `
+        <div style="padding:6px 8px;background:var(--surface-hover);border-radius:6px;">
+          <div style="color:var(--text-muted);font-size:9px;margin-bottom:2px;">RAISED</div>
+          <div style="font-weight:600;">${raised} ETH</div>
+          <div style="font-size:9px;color:var(--text-muted);">${pct}% of ${target}</div>
+        </div>
+        <div style="padding:6px 8px;background:var(--surface-hover);border-radius:6px;">
+          <div style="color:var(--text-muted);font-size:9px;margin-bottom:2px;">SOLD</div>
+          <div style="font-weight:600;">${soldPct}%</div>
+          <div style="font-size:9px;color:var(--text-muted);">of curve supply</div>
+        </div>
+        <div style="padding:6px 8px;background:var(--surface-hover);border-radius:6px;">
+          <div style="color:var(--text-muted);font-size:9px;margin-bottom:2px;">STATUS</div>
+          <div style="font-weight:600;color:${c.graduated ? (c.seeded ? '#4CAF50' : '#FF9800') : '#2196F3'};">${c.seeded ? 'Graduated' : c.graduated ? 'Ready to LP' : 'Active'}</div>
+          <div style="font-size:9px;color:var(--text-muted);">${obs.length} trades</div>
+        </div>
+      `;
+    }
+  }
+  // Graduate button — shown when curve is graduable (permissionless, anyone can call)
+  const gradEl = document.getElementById("chart-graduate");
+  if (gradEl) {
+    if (data.graduable) {
+      gradEl.style.display = "block";
+      gradEl.innerHTML = `<button onclick="graduateToken('${escapeJSAttr(data.tokenAddress)}')" style="width:100%;padding:10px;background:#FF9800;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;font-family:var(--font-mono);cursor:pointer;">Graduate to LP</button>
+        <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:4px;">Bonding curve complete — seed permanent LP</div>`;
+    } else {
+      gradEl.style.display = "none";
+    }
+  }
+  // Hide trade panel when graduated
+  const tradeEl = document.getElementById("chart-trade");
+  if (tradeEl && data.curve) {
+    if (data.curve.graduated) {
+      tradeEl.innerHTML = `<div style="text-align:center;padding:12px;color:var(--text-muted);font-size:12px;">${data.curve.seeded ? "Graduated — trade on DEX" : "Curve complete — awaiting LP seeding"}</div>`;
+    }
+  }
+}
+
+function handleTokenInfo(data) {
+  const nameEl = document.getElementById("chart-token-name");
+  const infoEl = document.getElementById("chart-token-info");
+  const actionsEl = document.getElementById("chart-actions");
+  const overlay = document.getElementById("token-chart-overlay");
+  if (nameEl && data.name) nameEl.textContent = `${data.name} ($${data.symbol})`;
+  if (infoEl) {
+    const addr = data.tokenAddress;
+    const creator = (data.creator || "unknown").toLowerCase();
+    const creatorDisplay = escapeHtml(data.creator || "unknown");
+    infoEl.innerHTML = `<a href="https://etherscan.io/address/${escapeHtml(addr)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${addr}</a> &middot; by <span style="cursor:pointer;text-decoration:underline;" onclick="showProfile('${escapeJSAttr(creator)}')">${creatorDisplay}</span>`
+      + (data.description ? `<div style="margin-top:6px;color:var(--text);font-size:12px;line-height:1.4;">${escapeHtml(data.description)}</div>` : "");
+  }
+  // Store roomId on overlay for chat, load chat history
+  if (overlay && data.roomId) {
+    overlay.dataset.roomId = data.roomId;
+    if (socket) socket.emit("gated-room-history", { roomId: data.roomId, limit: 50 });
+  }
+  if (actionsEl) {
+    const shareBtn = `<button onclick="navigator.clipboard.writeText(window.location.href).then(()=>showToast('Link copied','success'))" style="padding:8px 16px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Share</button>`;
+    const etherscanBtn = `<button onclick="window.open('https://etherscan.io/address/${escapeHtml(data.tokenAddress)}','_blank')" style="padding:8px 16px;background:var(--surface-hover);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Etherscan</button>`;
+    actionsEl.innerHTML = shareBtn + etherscanBtn;
+  }
+}
+
+function formatEthPrice(val) {
+  if (val === 0) return "0";
+  if (val < 0.0001) return val.toExponential(2);
+  if (val < 0.01) return val.toFixed(6);
+  if (val < 1) return val.toFixed(4);
+  if (val < 1000) return val.toFixed(3);
+  if (val < 1000000) return (val / 1000).toFixed(2) + "k";
+  return (val / 1000000).toFixed(2) + "M";
+}
 
 window.showFollowers = function(username) {
   if (!socket) return;
@@ -6273,16 +7205,26 @@ function showProfile(username) {
   // Clear while loading
   const displayName = isWalletAddress ? username.slice(0, 6) + "..." + username.slice(-4) : (isXHandle ? username : resolvedName);
   $("#profile-name").textContent = displayName;
-  $("#profile-handle").textContent = "";
+  $("#profile-handle").innerHTML = "";
+  $("#profile-wallets").innerHTML = "";
   $("#profile-bio").innerHTML = "";
   $("#profile-stats-row").innerHTML = "";
+  const pairSec = document.getElementById("profile-pair-section");
+  if (pairSec) { pairSec.style.display = "none"; pairSec.innerHTML = ""; }
   $("#profile-actions").innerHTML = "";
   $("#profile-posts-list").innerHTML = '<div class="post-empty">Loading...</div>';
   $("#profile-compose").innerHTML = "";
+  // Reset status dot
+  const statusDot = document.getElementById("profile-status-dot");
+  if (statusDot) { statusDot.className = "profile-status-dot"; statusDot.title = ""; statusDot.style.display = "none"; }
   // Reset to Posts tab
-  const pt = document.getElementById("profile-tab-posts"), rt = document.getElementById("profile-tab-replies");
-  if (pt) { pt.classList.add("active"); pt.style.borderBottomColor = "var(--text)"; pt.style.color = "var(--text)"; }
-  if (rt) { rt.classList.remove("active"); rt.style.borderBottomColor = "transparent"; rt.style.color = "var(--text-muted)"; }
+  const pt = document.getElementById("profile-tab-posts"), rt = document.getElementById("profile-tab-replies"), ct = document.getElementById("profile-tab-coins");
+  if (pt) { pt.classList.add("active"); }
+  if (rt) { rt.classList.remove("active"); }
+  if (ct) { ct.classList.remove("active"); }
+  const coinsList = document.getElementById("profile-coins-list");
+  if (coinsList) coinsList.style.display = "none";
+  $("#profile-posts-list").style.display = "block";
   $("#profile-banner").style.backgroundImage = "";
   const avatarEl = $("#profile-avatar");
   const c = getColor(resolvedName);
@@ -6294,16 +7236,16 @@ function showProfile(username) {
     avatarEl.innerHTML = "";
   } else {
     avatarEl.style.background = c;
-    avatarEl.innerHTML = `<span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#fff">${getInitials(displayName)}</span>`;
+    avatarEl.innerHTML = `<span style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:#fff">${getInitials(displayName)}</span>`;
   }
 
   // Pre-populate from online users data (instant, no server roundtrip)
   const onlineUser = users.find(u => u.name.toLowerCase() === resolvedName.toLowerCase());
   if (onlineUser) {
-    if (onlineUser.xUsername) $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(onlineUser.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(onlineUser.xUsername)}</a>`;
+    if (onlineUser.xUsername) $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(onlineUser.xUsername)}" target="_blank" rel="noopener">@${escapeHtml(onlineUser.xUsername)}</a>`;
     if (onlineUser.stats?.totalMeets > 0) $("#profile-stats-row").innerHTML = `<div><span>${onlineUser.stats.totalMeets}</span> meets</div>`;
   } else if (cached) {
-    if (cached.xUsername) $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(cached.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(cached.xUsername)}</a>`;
+    if (cached.xUsername) $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(cached.xUsername)}" target="_blank" rel="noopener">@${escapeHtml(cached.xUsername)}</a>`;
   }
 
   if (socket) {
@@ -6313,29 +7255,28 @@ function showProfile(username) {
 
   // For unregistered 0x addresses or @handles, render minimal profile immediately
   if (isWalletAddress || isXHandle) {
-    const iconStyle = "background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;transition:color 0.15s;display:inline-flex;align-items:center;";
-    const ethIcon = `<svg width="16" height="16" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></svg>`;
+    const svgEthSmall = `<svg width="12" height="12" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>`;
+    const svgMsgSmall = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`;
+    const svgLinkSmall = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`;
     let fallbackActions = "";
     if (isWalletAddress) {
-      fallbackActions += `<button style="${iconStyle}" onclick="tipUser('${escapeJSAttr(escapeHtml(username.toLowerCase()))}','${escapeJSAttr(escapeHtml(displayName))}')"> ${ethIcon}</button>`;
-      fallbackActions += `<button style="${iconStyle}" onclick="openDM(null,'${escapeJSAttr(escapeHtml(username.toLowerCase()))}',null)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>`;
-      $("#profile-handle").innerHTML = `<a href="https://etherscan.io/address/${escapeHtml(username)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(username.slice(0,10))}...${escapeHtml(username.slice(-8))}</a>`;
+      fallbackActions += `<button class="profile-action-btn" onclick="tipUser('${escapeJSAttr(escapeHtml(username.toLowerCase()))}','${escapeJSAttr(escapeHtml(displayName))}')">${svgEthSmall} Tip</button>`;
+      fallbackActions += `<button class="profile-action-btn primary" onclick="openDM(null,'${escapeJSAttr(escapeHtml(username.toLowerCase()))}',null)">${svgMsgSmall} Message</button>`;
+      $("#profile-wallets").innerHTML = `<a class="profile-wallet-chip" href="https://etherscan.io/address/${escapeHtml(username)}" target="_blank" rel="noopener" title="${escapeHtml(username)}">${svgEthSmall} ${escapeHtml(username.slice(0,10))}...${escapeHtml(username.slice(-8))}</a>`;
       $("#profile-posts-list").innerHTML = '<div class="post-empty">This address hasn\'t signed up yet</div>';
     } else if (isXHandle) {
-      fallbackActions += `<button style="${iconStyle}" onclick="openDM(null,'${escapeJSAttr(escapeHtml(username))}',null)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>`;
-      $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(username.slice(1))}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">${escapeHtml(username)}</a>`;
+      fallbackActions += `<button class="profile-action-btn primary" onclick="openDM(null,'${escapeJSAttr(escapeHtml(username))}',null)">${svgMsgSmall} Message</button>`;
+      $("#profile-handle").innerHTML = `<a href="https://x.com/${escapeHtml(username.slice(1))}" target="_blank" rel="noopener">${escapeHtml(username)}</a>`;
       $("#profile-posts-list").innerHTML = '<div class="post-empty">This user hasn\'t signed up yet</div>';
-      // Try to get X-derived wallet for tipping
       fetch(`/api/x-wallet/${encodeURIComponent(username.slice(1))}`).then(r => r.ok ? r.json() : null).then(data => {
         if (data?.address) {
-          const tipBtn = `<button style="${iconStyle}" onclick="tipUser('${escapeJSAttr(escapeHtml(data.address))}','${escapeJSAttr(escapeHtml(username))}')"> ${ethIcon}</button>`;
+          const tipBtn = `<button class="profile-action-btn" onclick="tipUser('${escapeJSAttr(escapeHtml(data.address))}','${escapeJSAttr(escapeHtml(username))}')">${svgEthSmall} Tip</button>`;
           $("#profile-actions").innerHTML = tipBtn + $("#profile-actions").innerHTML;
         }
       }).catch(() => {});
     }
-    fallbackActions += `<button style="${iconStyle}" onclick="copyProfileLink('${escapeJSAttr(escapeHtml(username))}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></button>`;
+    fallbackActions += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeJSAttr(escapeHtml(username))}')">${svgLinkSmall} Share</button>`;
     $("#profile-actions").innerHTML = fallbackActions;
-    // If server profile data comes back and resolves to a registered user, handleProfileData will overwrite this
   }
 }
 
@@ -6365,34 +7306,50 @@ function handleProfileData(data) {
   const bannerEdit = document.getElementById("profile-banner-edit");
   if (bannerEdit) bannerEdit.classList.toggle("visible", profileIsOwn);
   $("#profile-name").textContent = data.displayName || data.username;
-  let handleHtml = "";
-  if (data.xUsername) handleHtml += `<a href="https://x.com/${escapeHtml(data.xUsername)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;">@${escapeHtml(data.xUsername)}</a>`;
-  // Show wallet address: external wallet takes priority, then app wallet
-  // Show wallets — external first, then app wallet if different
-  if (data.walletAddress) {
-    handleHtml += (handleHtml ? " · " : "") + `<a href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;" title="wallet">${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
-  }
-  if (data.appWalletAddress && data.appWalletAddress !== data.walletAddress) {
-    handleHtml += (handleHtml ? " · " : "") + `<a href="https://etherscan.io/address/${escapeHtml(data.appWalletAddress)}" target="_blank" rel="noopener" style="color:#555;text-decoration:none;font-size:10px;" title="app wallet">${escapeHtml(data.appWalletAddress.slice(0,6))}...${escapeHtml(data.appWalletAddress.slice(-4))}</a>`;
-  }
-  // Add online/offline status
-  if (profileIsOwn) {
-    const color = STATUS_COLORS[myPresenceStatus] || "var(--green)";
-    const label = STATUS_LABELS[myPresenceStatus] || "Online";
-    handleHtml += (handleHtml ? " · " : "") + `<span id="profile-status-toggle" style="color:${color};cursor:pointer;" onclick="cycleMyStatus();if(socket)socket.emit('get-profile',{username:profileTarget})" title="Click to change">${label}</span>`;
-  } else {
-    const online = users.find(u => u.name.toLowerCase() === (data.username || "").toLowerCase());
-    if (online) {
-      const isIdle = online.status === "idle";
-      handleHtml += (handleHtml ? " · " : "") + `<span style="color:${isIdle ? "var(--amber)" : "var(--green)"}">${isIdle ? "Away" : "Online"}</span>`;
+
+  // Status dot next to name
+  const statusDot = document.getElementById("profile-status-dot");
+  if (statusDot) {
+    if (profileIsOwn) {
+      const statusClass = myPresenceStatus === "dnd" ? "dnd" : myPresenceStatus === "idle" ? "idle" : "online";
+      statusDot.className = "profile-status-dot " + statusClass;
+      statusDot.style.display = "";
+      statusDot.style.cursor = "pointer";
+      statusDot.title = "Click to change status";
+      statusDot.onclick = () => { cycleMyStatus(); if (socket) socket.emit("get-profile", { username: profileTarget }); };
     } else {
-      // Show last seen from directory data
-      const dirEntry = directoryData.find(d => d.name.toLowerCase() === (data.username || "").toLowerCase());
-      if (dirEntry?.lastSeen) handleHtml += (handleHtml ? " · " : "") + `<span style="color:#555">Last seen ${timeAgo(dirEntry.lastSeen)}</span>`;
-      else handleHtml += (handleHtml ? " · " : "") + `<span style="color:#555">Offline</span>`;
+      const online = users.find(u => u.name.toLowerCase() === (data.username || "").toLowerCase());
+      if (online) {
+        statusDot.className = "profile-status-dot " + (online.status === "idle" ? "idle" : "online");
+        statusDot.style.display = "";
+        statusDot.title = online.status === "idle" ? "Away" : "Online";
+      } else {
+        const dirEntry = directoryData.find(d => d.name.toLowerCase() === (data.username || "").toLowerCase());
+        statusDot.className = "profile-status-dot offline";
+        statusDot.style.display = "";
+        statusDot.title = dirEntry?.lastSeen ? "Last seen " + timeAgo(dirEntry.lastSeen) : "Offline";
+      }
     }
   }
+
+  // Handle line — X handle only
+  let handleHtml = "";
+  if (data.xUsername) handleHtml += `<a href="https://x.com/${escapeHtml(data.xUsername)}" target="_blank" rel="noopener">@${escapeHtml(data.xUsername)}</a>`;
+  // Coin link — check if user has a launched token
+  if (socket && data.username) {
+    socket.emit("get-user-tokens", { username: data.username });
+  }
   $("#profile-handle").innerHTML = handleHtml;
+
+  // Wallet chips — separate row
+  let walletsHtml = "";
+  if (data.walletAddress) {
+    walletsHtml += `<a class="profile-wallet-chip" href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" title="${escapeHtml(data.walletAddress)}"><svg width="10" height="10" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
+  }
+  if (data.appWalletAddress && data.appWalletAddress !== data.walletAddress) {
+    walletsHtml += `<a class="profile-wallet-chip app-wallet" href="https://etherscan.io/address/${escapeHtml(data.appWalletAddress)}" target="_blank" rel="noopener" title="app wallet: ${escapeHtml(data.appWalletAddress)}"><svg width="10" height="10" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>${escapeHtml(data.appWalletAddress.slice(0,6))}...${escapeHtml(data.appWalletAddress.slice(-4))}</a>`;
+  }
+  $("#profile-wallets").innerHTML = walletsHtml;
   // Custom status (separate from bio)
   let statusHtml = "";
   if (data.customStatus) {
@@ -6412,7 +7369,6 @@ function handleProfileData(data) {
   let statsHtml = "";
   if (data.socialScore) {
     statsHtml += `<div><span>${data.socialScore.score.toLocaleString()}</span> score</div>`;
-    // Update own score ticker if viewing own profile
     if (profileIsOwn) { updateSocialScoreBase(data.socialScore.score); startSocialScoreTicker(); }
   }
   if (data.followers > 0) statsHtml += `<div style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="showFollowers('${escapeJSAttr(data.username)}')"><span>${data.followers}</span> follower${data.followers !== 1 ? "s" : ""}</div>`;
@@ -6420,75 +7376,91 @@ function handleProfileData(data) {
   if (data.stats?.totalMeets > 0) statsHtml += `<div><span>${data.stats.totalMeets}</span> meets</div>`;
   if (data.stats?.received > 0) statsHtml += `<div><span>${pickupRate(data.stats)}%</span> pickup</div>`;
   if (data.stats?.totalOnlineMs > 60_000) statsHtml += `<div><span>${formatOnlineTime(data.stats.totalOnlineMs)}</span> online</div>`;
-  // Pair relationship info (only when viewing someone else's profile)
-  // Call rate display
+  // Call rate
   if (data.callRate && !profileIsOwn) {
     const rateWei = BigInt(data.callRate);
-    const ratePerMin = rateWei * 60n;
-    const ethPerMin = ethers.formatEther(ratePerMin);
+    const ethPerMin = ethers.formatEther(rateWei * 60n);
     statsHtml += `<div><span>${parseFloat(ethPerMin)}</span> ETH/min</div>`;
   }
   if (profileIsOwn) {
     if (data.callRate) {
       const rateWei = BigInt(data.callRate);
-      const ratePerMin = rateWei * 60n;
-      const ethPerMin = ethers.formatEther(ratePerMin);
+      const ethPerMin = ethers.formatEther(rateWei * 60n);
       statsHtml += `<div style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="editCallRate()"><span>${parseFloat(ethPerMin)}</span> ETH/min</div>`;
     } else {
       statsHtml += `<div style="cursor:pointer;color:#555;" onclick="editCallRate()">set rate...</div>`;
     }
   }
-  if (!profileIsOwn && data.pairInfo && data.pairInfo.meetCount > 0) {
-    statsHtml += `<div style="width:100%;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);font-size:10px;color:#555;">You &amp; ${escapeHtml(data.displayName || data.username)}: <span style="color:var(--text);">${data.pairInfo.meetCount}</span> meet${data.pairInfo.meetCount !== 1 ? "s" : ""} · <span style="color:var(--text);">${data.pairInfo.creditSeconds || 0}s</span> credit</div>`;
-  }
   $("#profile-stats-row").innerHTML = statsHtml;
 
-  // Actions
+  // Pair relationship — own section
+  const pairSec = document.getElementById("profile-pair-section");
+  if (!profileIsOwn && data.pairInfo && pairSec) {
+    const pi = data.pairInfo;
+    const pairCredit = pi.creditSeconds || 0;
+    const meets = pi.meetCount || 0;
+    const safeName = escapeJSAttr(escapeHtml(data.displayName || data.username));
+    let pairHtml = "";
+    if (meets > 0) pairHtml += `<span>${meets} meet${meets !== 1 ? "s" : ""} together</span><span style="color:#333;">·</span>`;
+    pairHtml += `<span class="val" id="profile-pair-credit">${pairCredit}s</span> credit`;
+    pairHtml += `<button onclick="showGiftTime('${safeName}')" style="background:none;border:1px solid var(--border);color:var(--green);cursor:pointer;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;transition:all 0.15s;flex-shrink:0;" title="Gift call time">+</button>`;
+    pairHtml += `<div id="gift-time-inline" style="display:none;align-items:center;gap:4px;"></div>`;
+    pairSec.innerHTML = pairHtml;
+    pairSec.style.display = "flex";
+  } else if (pairSec) {
+    pairSec.style.display = "none";
+  }
+
+  // Actions — labeled buttons for discoverability
   let actionsHtml = "";
+  const svgMsg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`;
+  const svgCall = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+  const svgPoke = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
+  const svgEth = `<svg width="12" height="12" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".6" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/></g></svg>`;
+  const svgStar = (filled) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+  const svgLink = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`;
+  const svgExport = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  const svgClock = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+  const svgLock = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+  const svgPhone = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>`;
+
   if (profileIsOwn) {
-    // Bio/banner editing handled inline (click bio text or pencil icon on banner)
     const myTipAddr = myWalletAddress || (myAppWallet ? myAppWallet.address : null);
     if (myTipAddr) {
-      actionsHtml += `<button style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;" onclick="tipUser('${escapeJSAttr(escapeHtml(myTipAddr))}','${escapeJSAttr(escapeHtml(myName))}')"><svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></svg></button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="tipUser('${escapeJSAttr(escapeHtml(myTipAddr))}','${escapeJSAttr(escapeHtml(myName))}')">${svgEth} Tip me</button>`;
     }
-    actionsHtml += `<button style="background:none;border:none;color:#555;cursor:pointer;padding:4px;transition:color 0.15s;" onclick="copyProfileLink('${escapeJSAttr(escapeHtml(myName))}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></button>`;
-    // Key export for guests (no X or wallet to recover from)
+    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${escapeJSAttr(escapeHtml(myName))}')">${svgLink} Share</button>`;
+    if (!myWalletAddress) actionsHtml += `<button class="profile-action-btn" onclick="startWalletLink()">+ Wallet</button>`;
+    if (!myXUsername) actionsHtml += `<button class="profile-action-btn" onclick="startXLink()">+ X</button>`;
     if (!myXUsername && !myWalletAddress) {
       actionsHtml += `<button class="profile-action-btn" onclick="exportE2EKey()">Export Key</button>`;
       actionsHtml += `<button class="profile-action-btn" onclick="importE2EKey()">Import Key</button>`;
     }
-    // Post export + integrity hash
-    actionsHtml += `<button style="background:none;border:none;color:#555;cursor:pointer;padding:4px;transition:color 0.15s;" onclick="exportMyPosts()" title="Export posts &amp; post integrity hash onchain"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>`;
+    actionsHtml += `<button class="profile-action-btn" onclick="exportMyPosts()" title="Export posts &amp; post integrity hash onchain">${svgExport} Export</button>`;
   } else {
     const online = users.find(u => u.name.toLowerCase() === data.username.toLowerCase());
-    // Message button always visible and prominent
-    // DM icon button
-    // Bare icon buttons — no background, no border
-    const iconBtnStyle = "background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;transition:color 0.15s;display:inline-flex;align-items:center;gap:4px;font-size:11px;font-family:var(--font-mono);";
-    actionsHtml += `<button style="${iconBtnStyle}" onclick="openDM(${online?"'"+online.userId+"'":"null"},'${escapeJSAttr(escapeHtml(data.displayName||data.username))}',${data.avatar?"'"+escapeJSAttr(data.avatar)+"'":"null"})" title="Message"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>`;
+    const safeName = escapeJSAttr(escapeHtml(data.displayName || data.username));
+    const safeAvatar = data.avatar ? "'" + escapeJSAttr(data.avatar) + "'" : "null";
+    // Primary action: Message
+    actionsHtml += `<button class="profile-action-btn primary" onclick="openDM(${online ? "'" + online.userId + "'" : "null"},'${safeName}',${safeAvatar})">${svgMsg} Message</button>`;
     if (online) {
-      actionsHtml += `<button style="${iconBtnStyle}" onclick="callUser('${online.userId}','${escapeJSAttr(escapeHtml(online.name))}',${online.avatar?"'"+escapeJSAttr(online.avatar)+"'":"null"})" title="Call"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></button>`;
-      actionsHtml += `<button style="${iconBtnStyle}" onclick="pokeUser('${online.userId}')" title="Poke"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="callUser('${online.userId}','${escapeJSAttr(escapeHtml(online.name))}',${online.avatar ? "'" + escapeJSAttr(online.avatar) + "'" : "null"})">${svgCall} Call</button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="pokeUser('${online.userId}')">${svgPoke} Poke</button>`;
     } else {
-      actionsHtml += `<button style="${iconBtnStyle}" onclick="callBackUser('${escapeJSAttr(escapeHtml(data.displayName||data.username))}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg></button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="callBackUser('${safeName}')">${svgPhone} Callback</button>`;
     }
-    // Tip button
     const tipAddr = data.walletAddress || data.appWalletAddress;
     if (tipAddr) {
-      actionsHtml += `<button style="${iconBtnStyle}" onclick="tipUser('${escapeJSAttr(escapeHtml(tipAddr))}','${escapeJSAttr(escapeHtml(data.displayName||data.username))}')"><svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></svg></button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="tipUser('${escapeJSAttr(escapeHtml(tipAddr))}','${safeName}')">${svgEth} Tip</button>`;
     }
-    // Buy time button (only if they have a rate and a wallet to receive)
     if (data.callRate && tipAddr) {
-      actionsHtml += `<button style="${iconBtnStyle}" onclick="showBuyTime('${escapeJSAttr(escapeHtml(data.displayName||data.username))}','${escapeJSAttr(data.callRate)}','${escapeJSAttr(escapeHtml(tipAddr))}')" title="Buy call time"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`;
+      actionsHtml += `<button class="profile-action-btn" onclick="showBuyTime('${safeName}','${escapeJSAttr(data.callRate)}','${escapeJSAttr(escapeHtml(tipAddr))}')">${svgClock} Buy time</button>`;
     }
-    // Follow/star button
     const contactKey = data.xUsername ? "@" + data.xUsername.toLowerCase() : (data.displayName || data.username).toLowerCase();
     const isFollowing = myContacts.includes(contactKey);
-    actionsHtml += `<button style="${iconBtnStyle}color:${isFollowing ? '#E8A83C' : 'var(--text-muted)'};" onclick="toggleProfileFollow('${escapeJSAttr(escapeHtml(data.displayName||data.username))}', ${data.xUsername ? "'" + escapeJSAttr(escapeHtml(data.xUsername)) + "'" : "null"})" title="${isFollowing ? 'Unfollow' : 'Follow'}"><svg width="16" height="16" viewBox="0 0 24 24" fill="${isFollowing ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>`;
-    // Private link button
-    actionsHtml += `<button style="${iconBtnStyle}" onclick="createPrivateRoom()" title="Create Private Call Link"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></button>`;
-    // Share button
-    actionsHtml += `<button style="background:none;border:none;color:#555;cursor:pointer;padding:4px;transition:color 0.15s;" onclick="copyProfileLink('${escapeJSAttr(escapeHtml(data.displayName||data.username))}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></button>`;
+    actionsHtml += `<button class="profile-action-btn${isFollowing ? ' active' : ''}" onclick="toggleProfileFollow('${safeName}', ${data.xUsername ? "'" + escapeJSAttr(escapeHtml(data.xUsername)) + "'" : "null"})">${svgStar(isFollowing)} ${isFollowing ? 'Following' : 'Follow'}</button>`;
+    actionsHtml += `<button class="profile-action-btn" onclick="createPrivateRoom()">${svgLock} Private</button>`;
+    actionsHtml += `<button class="profile-action-btn" onclick="copyProfileLink('${safeName}')">${svgLink} Share</button>`;
   }
   $("#profile-actions").innerHTML = actionsHtml;
 
@@ -6539,13 +7511,13 @@ window.editCallRate = function() {
   editor.id = "call-rate-editor";
   editor.style.cssText = "width:100%;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:10px;";
   editor.innerHTML = `
-    <div style="display:flex;align-items:center;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:2px 4px 2px 12px;gap:4px;">
-      <input type="text" inputmode="decimal" id="call-rate-input" placeholder="0.001" style="width:90px;padding:8px 0;background:none;border:none;color:var(--text);font-size:14px;font-family:var(--font-mono);text-align:right;outline:none;">
+    <div style="display:flex;align-items:center;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;padding:2px 4px 2px 12px;gap:4px;max-width:100%;">
+      <input type="text" inputmode="decimal" id="call-rate-input" placeholder="0.001" style="flex:1;min-width:0;max-width:100px;padding:10px 0;min-height:44px;background:none;border:none;color:var(--text);font-size:14px;font-family:var(--font-mono);text-align:right;outline:none;">
       <span style="font-size:11px;color:var(--text-muted);padding-right:8px;white-space:nowrap;">ETH/min</span>
-      <button onclick="saveCallRate()" style="background:none;border:none;color:var(--green);cursor:pointer;padding:6px;display:flex;opacity:0.7;transition:opacity 0.15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'" title="Confirm">
+      <button onclick="saveCallRate()" style="background:none;border:none;color:var(--green);cursor:pointer;padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;opacity:0.8;transition:opacity 0.15s;" title="Confirm">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </button>
-      <button onclick="document.getElementById('call-rate-editor')?.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;display:flex;opacity:0.5;transition:opacity 0.15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'" title="Cancel">
+      <button onclick="document.getElementById('call-rate-editor')?.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:8px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;opacity:0.6;transition:opacity 0.15s;" title="Cancel">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -6583,7 +7555,7 @@ window.showBuyTime = function(toName, callRateStr, toAddr) {
 
   const overlay = document.createElement("div");
   overlay.id = "buy-time-overlay";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:center;justify-content:center;padding:20px;";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
   const card = document.createElement("div");
@@ -6592,13 +7564,13 @@ window.showBuyTime = function(toName, callRateStr, toAddr) {
     <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Buy time with ${escapeHtml(toName)}</div>
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">${ethPerMin} ETH/min</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-      <input type="number" id="buy-time-mins" min="1" max="600" value="5" step="1" style="flex:1;padding:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;text-align:center;font-family:var(--font-mono);" oninput="updateBuyTimeTotal()">
+      <input type="number" inputmode="decimal" id="buy-time-mins" min="1" max="600" value="5" step="1" style="flex:1;padding:12px;min-height:44px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;text-align:center;font-family:var(--font-mono);" oninput="updateBuyTimeTotal()">
       <span style="font-size:13px;color:var(--text-muted);">minutes</span>
     </div>
     <div style="font-size:18px;font-weight:700;margin-bottom:16px;" id="buy-time-total">${(ethPerMin * 5).toFixed(6)} ETH</div>
     <div style="display:flex;gap:8px;">
-      <button onclick="this.closest('#buy-time-overlay').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:13px;">Cancel</button>
-      <button id="buy-time-confirm" onclick="confirmBuyTime('${escapeJSAttr(toName)}','${callRateStr}','${escapeJSAttr(toAddr)}')" style="flex:1;padding:10px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Buy</button>
+      <button onclick="this.closest('#buy-time-overlay').remove()" style="flex:1;padding:12px;min-height:44px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:13px;">Cancel</button>
+      <button id="buy-time-confirm" onclick="confirmBuyTime('${escapeJSAttr(toName)}','${callRateStr}','${escapeJSAttr(toAddr)}')" style="flex:1;padding:12px;min-height:44px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Buy</button>
     </div>
   `;
   overlay.appendChild(card);
@@ -6625,21 +7597,10 @@ window.confirmBuyTime = async function(toName, callRateStr, toAddr) {
   if (btn) { btn.disabled = true; btn.textContent = "Sending..."; }
 
   try {
-    // Get signer (app wallet or external)
-    let signer;
-    if (myAppWallet?.privateKey) {
-      const provider = new ethers.JsonRpcProvider("https://1rpc.io/eth", 1, { staticNetwork: true });
-      signer = new ethers.Wallet(myAppWallet.privateKey, provider);
-    } else if (window._signer) {
-      signer = window._signer;
-    } else {
-      showToast("Connect a wallet or set up app wallet first", "error");
-      if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
-      return;
-    }
+    const signer = await _resolveSigner();
+    if (!signer) { if (btn) { btn.disabled = false; btn.textContent = "Buy"; } return; }
 
     const tx = await signer.sendTransaction({ to: toAddr, value: totalWei });
-    showToast(`Sent ${totalEth} ETH — confirming...`, "success");
 
     if (socket) socket.emit("buy-time", { toName, seconds, amount: totalEth, txHash: tx.hash });
 
@@ -6649,9 +7610,47 @@ window.confirmBuyTime = async function(toName, callRateStr, toAddr) {
     setTimeout(() => { if (profileTarget) showProfile(profileTarget); }, 1000);
   } catch (e) {
     console.warn("Buy time failed:", e);
-    showToast(e.reason || e.message || "Transaction failed", "error");
+    if (e.code === "ACTION_REJECTED" || e.code === 4001) {
+      showToast("Purchase cancelled", "info");
+    } else {
+      showToast(e.reason || e.message || "Transaction failed", "error");
+    }
     if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
   }
+};
+
+// Gift time — send personal credit seconds to pair credit
+window.showGiftTime = function(toName) {
+  const container = document.getElementById("gift-time-inline");
+  if (!container) return;
+  const personal = myStats?.creditSeconds || 0;
+  if (personal < 10) {
+    showToast("You don't have enough credit to gift (earn by completing calls)", "error");
+    return;
+  }
+  container.style.display = "flex";
+  const presets = [10, 30, 60, 120, 300].filter(s => s <= personal);
+  // Include full balance as an option if it's not already a preset value
+  if (personal > 10 && !presets.includes(personal)) presets.push(personal);
+  const options = presets.length > 0 ? presets : [personal];
+  container.innerHTML = `
+    <select id="gift-time-amount" style="padding:8px 10px;min-height:36px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font-mono);">
+      ${options.map(s => `<option value="${s}">${s}s</option>`).join("")}
+    </select>
+    <span style="font-size:10px;color:#555;">(${personal}s)</span>
+    <button onclick="confirmGiftTime('${escapeJSAttr(toName)}')" style="background:none;border:1px solid rgba(74,222,128,0.3);color:var(--green);cursor:pointer;min-width:36px;min-height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;transition:all 0.15s;" title="Confirm gift">&#10003;</button>
+    <button onclick="document.getElementById('gift-time-inline').style.display='none'" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;min-width:36px;min-height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;" title="Cancel">&times;</button>
+  `;
+};
+
+window.confirmGiftTime = function(toName) {
+  const select = document.getElementById("gift-time-amount");
+  if (!select) return;
+  const seconds = parseInt(select.value);
+  if (!seconds || seconds < 10) return;
+  if (socket) socket.emit("gift-time", { toName, seconds });
+  const container = document.getElementById("gift-time-inline");
+  if (container) container.innerHTML = `<span style="font-size:10px;color:var(--green);">Sending...</span>`;
 };
 
 window.editProfileStatus = function() {
@@ -6666,17 +7665,7 @@ function saveBio() {
   showProfile(profileTarget);
 }
 
-window.editBanner = function() {
-  const input = document.createElement("input");
-  input.type = "file"; input.accept = "image/*";
-  input.onchange = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const dataUrl = await resizeBanner(file);
-    if (socket) socket.emit("update-profile", { banner: dataUrl });
-    $("#profile-banner").style.backgroundImage = `url(${dataUrl})`;
-  };
-  input.click();
-};
+
 
 function resizeBanner(file) {
   return new Promise((resolve) => {
@@ -6823,13 +7812,16 @@ window.toggleProfileFollow = function(name, xUsername) {
     showToast(`Following ${name}`, "success");
   }
   // Update the follow button in-place (no full profile refetch)
-  const isFollowing = !wasFollowing;
+  const isFollowing = myContacts.includes(contactKey);
   const followBtn = $("#profile-actions")?.querySelector("[title='Follow'], [title='Unfollow']");
   if (followBtn) {
     followBtn.title = isFollowing ? "Unfollow" : "Follow";
-    followBtn.style.color = isFollowing ? "#E8A83C" : "var(--text-muted)";
+    followBtn.classList.toggle("active", isFollowing);
     const svg = followBtn.querySelector("svg");
     if (svg) svg.setAttribute("fill", isFollowing ? "currentColor" : "none");
+    // Update label text
+    const textNode = followBtn.lastChild;
+    if (textNode && textNode.nodeType === 3) textNode.textContent = isFollowing ? " Following" : " Follow";
   }
 };
 
@@ -6876,6 +7868,7 @@ window.exitFeedThread = function() {
 // ── Notifications ───────────────────────────────────────────────────────
 
 let notifUnread = 0;
+let notifSeenIds = new Set(); // dedup notification IDs across reconnections
 
 // ── Live social score ticker ────────────────────────────────────────────
 let mySocialScoreBase = 0; // score from server at last sync
@@ -6931,10 +7924,12 @@ function renderNotifications(notifications) {
     else if (n.type === "group_invite") text = `<strong>${escapeHtml(n.fromUser)}</strong> invited you to <strong>${escapeHtml(n.preview || "a group")}</strong>`;
     else if (n.type === "group_stream") text = `<strong>${escapeHtml(n.fromUser)}</strong> is live: ${escapeHtml(n.preview || "")}`;
     else if (n.type === "tip") text = `<strong>${escapeHtml(n.fromUser)}</strong> tipped you ${escapeHtml(n.preview || "")} 💰`;
+    else if (n.type === "gift") text = `<strong>${escapeHtml(n.fromUser)}</strong> ${escapeHtml(n.preview || "gifted you call time")}`;
+    else if (n.type === "coin_trade") text = `🪙 ${escapeHtml(n.preview || "")}`;
     let onclick;
     const closeNotif = "document.getElementById('notif-panel').classList.remove('active')";
-    if (n.type==="group_invite" && n.postId) onclick = `${closeNotif};acceptGroupInvite('${n.postId}')`;
-    else if (n.postId) onclick = `${closeNotif};showThread('${n.postId}')`;
+    if (n.type==="group_invite" && n.postId) onclick = `${closeNotif};acceptGroupInvite('${escapeJSAttr(n.postId)}')`;
+    else if (n.postId) onclick = `${closeNotif};showThread('${escapeJSAttr(n.postId)}')`;
     else if (n.type==="dm") onclick = `${closeNotif};openDM(null,'${escapeJSAttr(n.fromUser)}',null)`;
     else if (n.type==="call_request") onclick = `${closeNotif};callBackUser('${escapeJSAttr(n.fromUser)}')`;
     else onclick = `${closeNotif};showProfile('${escapeJSAttr(n.fromUser)}')`;
@@ -7014,6 +8009,7 @@ function renderMessages() {
   html += `<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:flex;gap:6px;">
     <button onclick="showCreateGroup();document.getElementById('msgs-panel').classList.remove('active')" style="flex:1;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">+ Group</button>
     <button onclick="showCreateGatedRoom();document.getElementById('msgs-panel').classList.remove('active')" style="flex:1;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">🔒 Token Gate</button>
+    <button onclick="showLaunchToken();document.getElementById('msgs-panel').classList.remove('active')" style="flex:1;padding:6px;background:none;border:1px solid rgba(76,175,80,0.3);border-radius:6px;color:#4CAF50;font-size:11px;font-family:var(--font-mono);cursor:pointer;">&#9650; Launch Coin</button>
   </div>`;
   // Groups
   if (myGroups.length > 0) {
@@ -7081,7 +8077,7 @@ window.showCreateGroup = function() {
   _groupAvatar = null;
   const overlay = document.createElement("div");
   overlay.id = "create-group-overlay";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto;";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   // Build directory list for invite checkboxes
   const dirUsers = directoryData.filter(u => u.name.toLowerCase() !== myName?.toLowerCase()).slice(0, 50);
@@ -7099,6 +8095,7 @@ window.showCreateGroup = function() {
       <input type="file" id="group-avatar-file" accept="image/*" style="display:none;">
       <input id="group-name-input" type="text" placeholder="Group name" maxlength="50" style="flex:1;padding:10px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;box-sizing:border-box;">
     </div>
+    <textarea id="group-desc-input" rows="1" maxlength="280" placeholder="Add a description..." style="width:100%;padding:8px 10px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:12px;font-family:var(--font-mono);box-sizing:border-box;resize:none;line-height:1.4;margin-bottom:14px;outline:none;overflow:hidden;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
     ${dirUsers.length > 0 ? `
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Invite members</div>
       <input id="group-invite-search" type="text" placeholder="Search users..." style="width:100%;padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;margin-bottom:6px;box-sizing:border-box;">
@@ -7137,9 +8134,10 @@ window.showCreateGroup = function() {
 window.submitCreateGroup = function() {
   const name = document.getElementById("group-name-input")?.value?.trim();
   if (!name) { showToast("Enter a group name", "error"); return; }
+  const description = (document.getElementById("group-desc-input")?.value || "").trim().slice(0, 280) || undefined;
   const checkboxes = document.querySelectorAll(".group-invite-cb:checked");
   const inviteNames = [...checkboxes].map(cb => cb.value);
-  if (socket) socket.emit("create-group", { name, inviteNames, avatar: _groupAvatar || undefined });
+  if (socket) socket.emit("create-group", { name, inviteNames, avatar: _groupAvatar || undefined, description });
   document.getElementById("create-group-overlay")?.remove();
   _groupAvatar = null;
 };
@@ -7192,8 +8190,6 @@ function appendGroupMsg(msg, container) {
   container.scrollTop = container.scrollHeight;
 }
 
-window.closeGroupChat = function() { activeGroupId = null; };
-
 window.goLiveInGroup = function(groupId) {
   closeDM();
   startStream(groupId);
@@ -7211,7 +8207,7 @@ window.showCreateGatedRoom = function() {
   _gatedRoomAvatar = null;
   const overlay = document.createElement("div");
   overlay.id = "create-gated-overlay";
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto;";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:60px;overflow-y:auto;";
   overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   const card = document.createElement("div");
   card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:340px;max-width:90vw;box-sizing:border-box;";
@@ -7236,7 +8232,8 @@ window.showCreateGatedRoom = function() {
         <input type="radio" name="gated-type" value="NFT" style="display:none;" id="gated-type-nft"> NFT
       </label>
     </div>
-    <input id="gated-min" type="text" placeholder="Minimum balance (e.g. 1)" value="1" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font-mono);margin-bottom:14px;box-sizing:border-box;">
+    <input id="gated-min" type="text" placeholder="Minimum balance (e.g. 1)" value="1" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font-mono);margin-bottom:10px;box-sizing:border-box;">
+    <textarea id="gated-desc" rows="1" maxlength="280" placeholder="Add a description..." style="width:100%;padding:8px 10px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:12px;font-family:var(--font-mono);box-sizing:border-box;resize:none;line-height:1.4;margin-bottom:14px;outline:none;overflow:hidden;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
     <button onclick="submitCreateGatedRoom()" style="width:100%;padding:11px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Create Room</button>
   `;
   overlay.appendChild(card);
@@ -7271,9 +8268,171 @@ window.submitCreateGatedRoom = function() {
   const type = document.querySelector('input[name="gated-type"]:checked')?.value || "ERC20";
   const min = document.getElementById("gated-min")?.value?.trim() || "1";
   if (!name || !token || !/^0x[0-9a-fA-F]{40}$/.test(token)) { showToast("Enter a valid room name and token address", "error"); return; }
-  if (socket) socket.emit("create-gated-room", { name, tokenAddress: token, tokenType: type, minBalance: min, avatar: _gatedRoomAvatar || undefined });
+  const description = (document.getElementById("gated-desc")?.value || "").trim().slice(0, 280) || undefined;
+  if (socket) socket.emit("create-gated-room", { name, tokenAddress: token, tokenType: type, minBalance: min, avatar: _gatedRoomAvatar || undefined, description });
   _gatedRoomAvatar = null;
   document.getElementById("create-gated-overlay")?.remove();
+};
+
+// ── Coin Launchpad ──────────────────────────────────────────────────────────
+
+const CURVE_SALE_ADDRESS = "0x000000005d9b18764E12E5aeefD6dA73110F85eb";
+const CURVE_SALE_LAUNCH_ABI = [
+  "function launch(address creator, string name, string symbol, string uri, uint256 supply, bytes32 salt, uint256 cap, uint256 startPrice, uint256 endPrice, uint16 feeBps, uint256 graduationTarget, uint256 lpTokens, address lpRecipient, uint16 poolFeeBps, uint16 sniperFeeBps, uint16 sniperDuration, uint16 maxBuyBps, tuple(address beneficiary, uint16 buyBps, uint16 sellBps, bool buyOnInput, bool sellOnInput) creatorFee, uint40 vestCliff, uint40 vestDuration) returns (address token)",
+  "function graduate(address token) returns (uint256 liquidity)",
+  "function buyExactIn(address token, uint256 minAmountOut, uint256 deadline) payable",
+  "function sell(address token, uint256 amount, uint256 minProceeds, uint256 deadline)",
+  "function curves(address token) view returns (address creator, uint256 cap, uint256 sold, uint256 virtualReserve, uint256 startPrice, uint256 endPrice, uint16 feeBps, uint16 poolFeeBps, uint256 raisedETH, uint256 graduationTarget, uint256 lpTokens, address lpRecipient, bool graduated, bool seeded, uint16 sniperFeeBps, uint16 sniperDuration, uint16 maxBuyBps, uint40 launchTime)"
+];
+const ERC20_APPROVE_ABI = ["function approve(address spender, uint256 amount) returns (bool)"];
+
+window.showLaunchToken = function() {
+  const existing = document.getElementById("launch-token-overlay");
+  if (existing) existing.remove();
+  if (!myName) { showToast("Sign in first", "error"); return; }
+  const hasWallet = walletState?.signer || myAppWallet?.privateKey || myAppWallet?.address;
+  if (!hasWallet) {
+    showToast("Connect a wallet first", "error");
+    if (typeof showWalletModal === "function") showWalletModal();
+    return;
+  }
+  const coinSymbol = myName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "COIN";
+  const avatarBg = myAvatar ? `url(${myAvatar}) center/cover` : getColor(myName);
+  const avatarInner = myAvatar ? "" : `<span style="font-size:22px;font-weight:700;color:#fff;letter-spacing:1px">${getInitials(myName)}</span>`;
+  const overlay = document.createElement("div");
+  overlay.id = "launch-token-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:250;display:flex;align-items:center;justify-content:center;overflow-y:auto;";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:16px;width:320px;max-width:90vw;box-sizing:border-box;overflow:hidden;";
+  card.innerHTML = `
+    <div style="padding:28px 24px 20px;text-align:center;">
+      <div style="width:72px;height:72px;border-radius:50%;margin:0 auto 14px;overflow:hidden;background:${avatarBg};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 12px rgba(0,0,0,0.3);">${avatarInner}</div>
+      <div style="font-weight:700;font-size:16px;margin-bottom:2px;">${escapeHtml(myName)}</div>
+      <div style="color:var(--text-muted);font-size:13px;font-family:var(--font-mono);">$${escapeHtml(coinSymbol)}</div>
+    </div>
+    <div style="padding:0 24px 14px;">
+      <textarea id="launch-description" rows="1" maxlength="280" placeholder="Add a description..." style="width:100%;padding:8px 10px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:14px;font-family:var(--font-mono);box-sizing:border-box;resize:none;line-height:1.4;outline:none;overflow:hidden;" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+    </div>
+    <div style="padding:0 24px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);line-height:1.6;">
+        <span>1B supply</span><span>Bonding curve</span><span>LP burned</span>
+      </div>
+    </div>
+    <div id="launch-status" style="display:none;font-size:11px;color:var(--text-muted);padding:0 24px 8px;text-align:center;"></div>
+    <div style="padding:0 24px 24px;">
+      <button id="launch-submit-btn" onclick="submitLaunchToken()" style="width:100%;padding:12px;background:#4CAF50;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;font-family:var(--font-mono);cursor:pointer;transition:opacity 0.15s;">Launch $${escapeHtml(coinSymbol)}</button>
+    </div>
+    <button onclick="this.closest('#launch-token-overlay').remove()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:4px;line-height:1;opacity:0.6;">&times;</button>
+  `;
+  card.style.position = "relative";
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+};
+
+window.submitLaunchToken = async function() {
+  const statusEl = document.getElementById("launch-status");
+  const btn = document.getElementById("launch-submit-btn");
+
+  const signer = await _resolveSigner();
+  if (!signer) return;
+
+  const isAppWallet = !(window._signer || walletState?.signer);
+  btn.disabled = true; btn.style.opacity = "0.5"; btn.textContent = "Preparing...";
+  statusEl.style.display = "block"; statusEl.textContent = isAppWallet ? "Sending from app wallet..." : "Computing token address...";
+
+  // Ask server to compute CREATE2 address and prepare room (name/symbol/image derived from user)
+  const description = (document.getElementById("launch-description")?.value || "").trim().slice(0, 280);
+  socket.emit("launch-token", { description });
+
+  // Wait for server response
+  const response = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { reject(new Error("Timeout")); }, 15000);
+    socket.once("launch-token-ready", (data) => { clearTimeout(timeout); resolve(data); });
+    socket.once("launch-token-error", (data) => { clearTimeout(timeout); reject(new Error(data.message)); });
+  }).catch(err => {
+    showToast(err.message || "Launch failed", "error");
+    btn.disabled = false; btn.style.opacity = "1"; btn.textContent = "Launch Coin";
+    statusEl.style.display = "none";
+    return null;
+  });
+  if (!response) return;
+
+  statusEl.textContent = isAppWallet ? "Sending transaction..." : "Confirm in your wallet...";
+  btn.textContent = isAppWallet ? "Sending..." : "Confirm in wallet...";
+
+  try {
+    const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
+    const p = response.txParams;
+    const calldata = iface.encodeFunctionData("launch", [
+      await signer.getAddress(),  // creator
+      response.name,
+      response.symbol,
+      response.uri,
+      p.supply,
+      response.salt,
+      p.cap,
+      p.startPrice,
+      p.endPrice,
+      p.feeBps,
+      p.graduationTarget,
+      p.lpTokens,
+      p.lpRecipient,
+      p.poolFeeBps,
+      p.sniperFeeBps,
+      p.sniperDuration,
+      p.maxBuyBps,
+      [p.creatorFee.beneficiary, p.creatorFee.buyBps, p.creatorFee.sellBps, p.creatorFee.buyOnInput, p.creatorFee.sellOnInput],
+      p.vestCliff,
+      p.vestDuration
+    ]);
+    const tx = await signer.sendTransaction({ to: CURVE_SALE_ADDRESS, data: calldata });
+    statusEl.innerHTML = `Pending... <a href="https://etherscan.io/tx/${tx.hash}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">view tx</a>`;
+    btn.textContent = "Mining...";
+
+    const receipt = await tx.wait();
+    if (receipt.status === 0) throw new Error("Transaction reverted");
+
+    // Notify server of confirmation
+    socket.emit("launch-token-confirmed", { tokenAddress: response.tokenAddress, txHash: tx.hash });
+
+    statusEl.innerHTML = `<span style="color:#4CAF50">Launched!</span> <a href="https://etherscan.io/tx/${tx.hash}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;font-size:10px;">etherscan</a>`;
+    btn.textContent = "View Coin";
+    btn.disabled = false; btn.style.opacity = "1";
+    btn.onclick = () => {
+      document.getElementById("launch-token-overlay")?.remove();
+      showTokenChart(response.tokenAddress);
+    };
+    showToast(`$${response.symbol} launched!`, "success");
+    // Refresh gated rooms so the new room appears in DMs
+    if (socket) socket.emit("get-my-gated-rooms");
+  } catch (err) {
+    const msg = err?.info?.error?.message || err?.reason || err?.message || "Transaction failed";
+    showToast(msg, "error");
+    btn.disabled = false; btn.style.opacity = "1"; btn.textContent = `Launch $${response?.symbol || "Coin"}`;
+    statusEl.textContent = msg;
+  }
+};
+
+
+window.graduateToken = async function(tokenAddress) {
+  const signer = await _resolveSigner();
+  if (!signer) return;
+  const isAppWallet = !(window._signer || walletState?.signer);
+  showToast(isAppWallet ? "Sending graduate tx..." : "Confirm in your wallet...", "info", 5000);
+  try {
+    const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
+    const calldata = iface.encodeFunctionData("graduate", [tokenAddress]);
+    const tx = await signer.sendTransaction({ to: CURVE_SALE_ADDRESS, data: calldata });
+    showToast(`Graduating... ${tx.hash.slice(0, 10)}...`, "info", 10000);
+    const receipt = await tx.wait();
+    if (receipt.status === 0) throw new Error("Transaction reverted");
+    showToast("Graduated! LP seeded.", "success");
+    // Refresh chart
+    if (socket) socket.emit("get-token-chart", { tokenAddress });
+  } catch (err) {
+    showToast(err?.info?.error?.message || err?.reason || err?.message || "Graduate failed", "error");
+  }
 };
 
 window.showGateScreen = async function(roomId) {
@@ -7295,6 +8454,7 @@ window.showGateScreen = async function(roomId) {
   overlay.innerHTML = `
     <div style="width:64px;height:64px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;font-size:24px;">🔒</div>
     <div style="font-size:20px;font-weight:700;">${escapeHtml(room.name)}</div>
+    ${room.description ? `<div style="font-size:12px;color:var(--text);max-width:280px;text-align:center;line-height:1.4;">${escapeHtml(room.description)}</div>` : ""}
     <div style="font-size:12px;color:var(--text-muted);">${room.memberCount} member${room.memberCount !== 1 ? "s" : ""} · Token-gated</div>
     <div style="font-size:11px;color:#555;font-family:var(--font-mono);">${room.tokenType} · ${escapeHtml(room.tokenAddress)}</div>
     <div style="font-size:11px;color:#555;">Min: ${escapeHtml(room.minBalance)} ${room.tokenType === "NFT" ? "NFT(s)" : "tokens"}</div>
@@ -7509,51 +8669,8 @@ window.confirmTip = async function() {
   const tipMsg = document.getElementById("tip-message").value.trim();
   closeTipOverlay();
   try {
-    // Use external wallet signer if available, otherwise use app wallet
-    let signer = window._signer;
-    if (!signer && myAppWallet?.privateKey) {
-      const provider = new ethers.JsonRpcProvider("https://ethereum.publicnode.com", 1, { staticNetwork: true });
-      signer = new ethers.Wallet(myAppWallet.privateKey, provider);
-      showToast("Sending from app wallet...", "info", 3000);
-    } else if (!signer && myAppWallet?.address && !myAppWallet?.privateKey) {
-      // App wallet exists but private key is locked — try to unlock
-      const stored = localStorage.getItem("mm_app_wallet");
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          if (data.ct) {
-            const pw = await promptPassword("Enter your password to unlock your app wallet:");
-            if (pw) {
-              const w = await decryptWalletKey(data, pw);
-              myAppWallet = w;
-              const provider = new ethers.JsonRpcProvider("https://ethereum.publicnode.com", 1, { staticNetwork: true });
-              signer = new ethers.Wallet(w.privateKey, provider);
-              showToast("Wallet unlocked — sending...", "info", 3000);
-            }
-          }
-        } catch { showToast("Wrong password", "error"); return; }
-      }
-      if (!signer) {
-        // Still no signer — offer to connect external wallet
-        if (typeof showWalletModal === "function") {
-          showToast("Connect a wallet or set a password for your app wallet", "info");
-          showWalletModal();
-        } else {
-          showToast("No wallet available — set a password for your app wallet from your profile", "error");
-        }
-        return;
-      }
-    } else if (signer) {
-      showToast("Confirm in your wallet...", "info", 5000);
-    } else {
-      if (typeof showWalletModal === "function") {
-        showToast("Connect a wallet to send", "info");
-        showWalletModal();
-      } else {
-        showToast("No wallet available", "error");
-      }
-      return;
-    }
+    const signer = await _resolveSigner();
+    if (!signer) return;
     const tx = await signer.sendTransaction({
       to: addr,
       value: ethers.parseEther(amount),
@@ -7566,7 +8683,7 @@ window.confirmTip = async function() {
       } else if (ctx === "call" && currentCallId) {
         socket.emit("call-tip", { callId: currentCallId, amount, txHash: tx.hash, message: tipMsg });
       } else {
-        socket.emit("tip-sent", { toName: name, amount, txHash: tx.hash });
+        socket.emit("tip-sent", { toName: name, amount, txHash: tx.hash, message: tipMsg });
       }
     }
   } catch (e) {
@@ -7847,9 +8964,6 @@ $("#notif-btn").addEventListener("click", (e) => {
     }, 1500);
   }
 });
-document.addEventListener("click", () => {
-  document.getElementById("notif-panel")?.classList.remove("active");
-});
 
 // Custom status
 $("#my-custom-status").addEventListener("click", () => {
@@ -8096,6 +9210,8 @@ $("#sign-out-link").addEventListener("click", (e) => {
   e.preventDefault();
   // Clean up any active stream
   if (currentStreamId) leaveStream();
+  // Clear live tickers
+  if (socialScoreInterval) { clearInterval(socialScoreInterval); socialScoreInterval = null; }
   // Clear all stored identity
   localStorage.removeItem("om_userId");
   localStorage.removeItem("om_name");
@@ -8206,7 +9322,8 @@ $("#end-call-btn").addEventListener("click", endCurrentCall);
 
 // Ended
 $("#recall-btn").addEventListener("click", () => {
-  if (currentRemote) callUser(currentRemote.userId, currentRemote.name, currentRemote.avatar);
+  const r = lastCallRemote || currentRemote;
+  if (r) callUser(r.userId, r.name, r.avatar);
 });
 $("#back-btn").addEventListener("click", () => {
   currentRemote = null;
@@ -8324,6 +9441,14 @@ window.addEventListener("load", async () => {
       if (loginBtn) container.insertBefore(preview, loginBtn.closest(".login-form-row") || loginBtn);
       else container.querySelector(".login-logo")?.after(preview);
     }).catch(() => {});
+  }
+
+  if (params.get("coin")) {
+    const coinAddr = decodeURIComponent(params.get("coin")).replace(/[^a-fA-F0-9x]/g, "").slice(0, 42);
+    if (/^0x[0-9a-fA-F]{40}$/.test(coinAddr)) {
+      localStorage.setItem("om_coinLink", coinAddr);
+      window.history.replaceState({}, "", "/");
+    }
   }
 
   if (params.get("stream")) {

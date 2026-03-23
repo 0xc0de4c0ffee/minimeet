@@ -23,6 +23,18 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   if (IS_PROD) res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.socket.io",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://pbs.twimg.com",
+    "connect-src 'self' https://ethereum.publicnode.com https://1rpc.io wss://relay.walletconnect.com https://relay.walletconnect.com https://verify.walletconnect.com",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://api.twitter.com",
+  ].join("; "));
   next();
 });
 
@@ -168,15 +180,15 @@ app.get("/auth/x/callback", async (req, res) => {
       avatar,
     });
     // Also store avatar in the avatars table so dbGetAvatar finds it
-    if (avatar) await dbSetAvatar(xUser.name, avatar);
+    if (avatar) await dbSetAvatar(xUser.username, avatar);
 
     // Derive deterministic app wallet from X ID
     const derivedWallet = deriveWalletFromXId(xUser.id);
     // Store the derived wallet address in the profile
-    const profile = await dbGetProfile(xUser.name.toLowerCase());
+    const profile = await dbGetProfile(xUser.username.toLowerCase());
     if (!profile.appWalletAddress) {
       profile.appWalletAddress = derivedWallet.address;
-      await dbSetProfile(xUser.name.toLowerCase(), profile);
+      await dbSetProfile(xUser.username.toLowerCase(), profile);
     }
 
     // Create a temporary auth token the client can use
@@ -281,10 +293,14 @@ app.get("/auth/wallet/nonce", (req, res) => {
   rl.count++;
   nonceRateLimit.set(ip, rl);
   if (rl.count > 10) return res.status(429).json({ error: "Too many requests" });
-  // Evict oldest nonces to prevent memory exhaustion (not clear-all — avoids DoS)
+  // Evict oldest nonces to prevent memory exhaustion (FIFO via Map insertion order)
   if (walletNonces.size > 10000) {
-    const sorted = [...walletNonces.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
-    for (let i = 0; i < 2000; i++) walletNonces.delete(sorted[i][0]);
+    let evicted = 0;
+    for (const key of walletNonces.keys()) {
+      if (evicted >= 2000) break;
+      walletNonces.delete(key);
+      evicted++;
+    }
   }
 
   const address = (req.query.address || "").toLowerCase().trim();
@@ -709,15 +725,16 @@ async function dbSetProfile(name, profile) {
 
 // ─── Group chats ─────────────────────────────────────────────────────────────
 
-async function dbCreateGroup(id, name, creator, avatar) {
+async function dbCreateGroup(id, name, creator, avatar, description) {
+  const desc = description || null;
   if (supabase) {
-    try { await supabase.from("group_chats").insert({ id, name, creator, avatar: avatar || null, created_at: new Date().toISOString() }); } catch (e) { console.warn("Group create error:", e.message); }
+    try { await supabase.from("group_chats").insert({ id, name, creator, avatar: avatar || null, description: desc, created_at: new Date().toISOString() }); } catch (e) { console.warn("Group create error:", e.message); }
     try { await supabase.from("group_members").insert({ group_id: id, user_name: creator, role: "admin", joined_at: new Date().toISOString() }); } catch (e) { console.warn("Group member add error:", e.message); }
     return;
   }
   const groups = jsonGet("group_chats", "_all");
   let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
-  list.push({ id, name, creator, createdAt: Date.now(), members: [{ userName: creator, role: "admin" }] });
+  list.push({ id, name, creator, description: desc, createdAt: Date.now(), members: [{ userName: creator, role: "admin" }] });
   jsonSet("group_chats", "_all", JSON.stringify(list));
 }
 
@@ -725,7 +742,7 @@ async function dbGetGroup(groupId) {
   if (supabase) {
     try {
       const { data } = await supabase.from("group_chats").select("*").eq("id", groupId).single();
-      if (data) return { id: data.id, name: data.name, creator: data.creator, avatar: data.avatar || null, createdAt: new Date(data.created_at).getTime() };
+      if (data) return { id: data.id, name: data.name, creator: data.creator, avatar: data.avatar || null, description: data.description || null, createdAt: new Date(data.created_at).getTime() };
     } catch {}
     return null;
   }
@@ -848,32 +865,232 @@ const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
 const ERC721_ABI = ["function balanceOf(address) view returns (uint256)"];
 const TOKEN_RPC = "https://1rpc.io/eth";
 
-async function checkTokenBalance(tokenAddress, tokenType, walletAddress) {
-  const RPCS = [TOKEN_RPC, "https://ethereum.publicnode.com", "https://eth.drpc.org"];
-  for (const rpc of RPCS) {
+// ─── ClassicalCurveSale (coin launchpad) ─────────────────────────────────────
+
+const CURVE_SALE_ADDRESS = "0x000000005d9b18764E12E5aeefD6dA73110F85eb";
+const CURVE_SALE_ABI = [
+  "function tokenImplementation() view returns (address)",
+  "function curves(address token) view returns (address creator, uint256 cap, uint256 sold, uint256 virtualReserve, uint256 startPrice, uint256 endPrice, uint16 feeBps, uint16 poolFeeBps, uint256 raisedETH, uint256 graduationTarget, uint256 lpTokens, address lpRecipient, bool graduated, bool seeded, uint16 sniperFeeBps, uint16 sniperDuration, uint16 maxBuyBps, uint40 launchTime)",
+  "function observationCount(address token) view returns (uint256)",
+  "function observe(address token, uint256 from, uint256 to) view returns (uint256[])",
+  "function quote(address token, uint256 amount) view returns (uint256)",
+  "function graduable(address token) view returns (bool)",
+  "function graduate(address token) returns (uint256 liquidity)",
+  "function launch(address creator, string name, string symbol, string uri, uint256 supply, bytes32 salt, uint256 cap, uint256 startPrice, uint256 endPrice, uint16 feeBps, uint256 graduationTarget, uint256 lpTokens, address lpRecipient, uint16 poolFeeBps, uint16 sniperFeeBps, uint16 sniperDuration, uint16 maxBuyBps, tuple(address beneficiary, uint16 buyBps, uint16 sellBps, bool buyOnInput, bool sellOnInput) creatorFee, uint40 vestCliff, uint40 vestDuration) returns (address token)"
+];
+
+// Default pump.fun-style launch params
+// Default pump.fun-style launch params
+// Curve: price(x) = P₀ · T₀² / (T₀ − x)²
+// R = endPrice/startPrice = 16x, graduationTarget = 0 (sell full cap)
+// All 800M tokens sell on curve → 200M + ~5.33 ETH seed LP at endPrice → ZERO burn
+// FDV: ~$5k start → ~$80k at graduation (at $3k/ETH), 16x multiple
+//
+// Fee structure (all to creator to bootstrap interest):
+//   Bonding curve: 1% per trade (buy & sell) → sent to creator each tx
+//   Post-graduation: 0.25% pool swap fee + 0.05% creator fee on buys/sells
+//   Sniper: 5% decaying to 1% over first 5 min (anti-snipe)
+const DEFAULT_LAUNCH_PARAMS = {
+  supply:            ethers.parseUnits("1000000000", 18),  // 1B total
+  cap:               ethers.parseUnits("800000000", 18),   // 800M on curve (100% sells before graduation)
+  lpTokens:          ethers.parseUnits("200000000", 18),   // 200M LP (all used at graduation, zero excess)
+  startPrice:        BigInt("1666666667"),                  // ~1.667e-9 ETH/tok → ~$5k starting FDV
+  endPrice:          BigInt("26666666672"),                 // 16x ratio → ~$80k FDV at graduation
+  feeBps:            100,   // 1% bonding curve fee → creator
+  graduationTarget:  0n,                        // 0 = graduate when full cap sold (pump.fun model, ~5.33 ETH raised)
+  lpRecipient:       ethers.ZeroAddress,       // burn LP tokens (permanent liquidity)
+  poolFeeBps:        25,    // 0.25% base pool swap fee (to LPs)
+  sniperFeeBps:      500,   // 5% sniper fee at launch
+  sniperDuration:    300,   // decays to 1% over 5 min
+  maxBuyBps:         1000,  // 10% max per buy (anti-whale)
+  // Post-graduation creator fee: 0.50% on buys, 0.50% on sells → routed through contract
+  creatorFee:        null,  // set dynamically per launch with creator's wallet as beneficiary
+  vestCliff:         0,
+  vestDuration:      0
+};
+
+// Hardcoded tokenImplementation address (immutable, deployed by constructor)
+const TOKEN_IMPLEMENTATION = "0xC54843C7419B3B7813d4C1065dA7f88104cdb047";
+
+// Precomputed initCodeHash for PUSH0 proxy clone (constant — only depends on TOKEN_IMPLEMENTATION)
+const _INIT_CODE_HASH = (() => {
+  const implHex = TOKEN_IMPLEMENTATION.slice(2).toLowerCase().padStart(40, "0");
+  const initCodeHex = "602d5f8160095f39f3" + "5f5f365f5f37365f73" + implHex + "5af43d5f5f3e6029573d5ffd5b3d5ff3";
+  return ethers.keccak256("0x" + initCodeHex);
+})();
+const _ABI_CODER = ethers.AbiCoder.defaultAbiCoder();
+
+// Compute CREATE2 token address deterministically (matches contract's PUSH0 proxy deploy)
+function computeTokenAddress(sender, name, symbol, salt) {
+  const _salt = ethers.keccak256(_ABI_CODER.encode(
+    ["address", "string", "string", "bytes32"],
+    [sender, name, symbol, salt]
+  ));
+  return ethers.getCreate2Address(CURVE_SALE_ADDRESS, _salt, _INIT_CODE_HASH);
+}
+
+// Vanity mine a salt that produces a token address with at least 1 leading zero byte (0x00...)
+// ~256 attempts avg, ~50ms — barely noticeable
+function mineVanitySalt(sender, name, symbol, maxAttempts = 2000) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const salt = "0x" + crypto.randomBytes(32).toString("hex");
+    const addr = computeTokenAddress(sender, name, symbol, salt);
+    if (addr.toLowerCase().startsWith("0x00")) return { salt, address: addr };
+  }
+  // Fallback: deterministic salt (no vanity)
+  const salt = "0x" + crypto.createHash("sha256").update("reachable-coin:" + sender + name).digest("hex");
+  return { salt, address: computeTokenAddress(sender, name, symbol, salt) };
+}
+
+// Read curve state from contract
+// ── Multicall3 batched RPC reads ─────────────────────────────────────────────
+
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+const MULTICALL3_ABI = ["function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) view returns (tuple(bool success, bytes returnData)[])"];
+const _saleIface = new ethers.Interface(CURVE_SALE_ABI);
+const _erc20BalIface = new ethers.Interface(["function balanceOf(address) view returns (uint256)"]);
+
+// Cached RPC providers — reuse connections, evict stale ones on failure
+const _providerCache = {};
+const _providerErrors = {};
+function _getProvider(rpc) {
+  // Evict provider if it had 3+ consecutive errors (will recreate)
+  if (_providerErrors[rpc] >= 3) { delete _providerCache[rpc]; _providerErrors[rpc] = 0; }
+  if (!_providerCache[rpc]) _providerCache[rpc] = new ethers.JsonRpcProvider(rpc, 1, { staticNetwork: true });
+  return _providerCache[rpc];
+}
+function _rpcOk(rpc) { _providerErrors[rpc] = 0; }
+function _rpcFail(rpc) { _providerErrors[rpc] = (_providerErrors[rpc] || 0) + 1; }
+// All verified no-API-key public Ethereum RPCs
+const _RPCS = [TOKEN_RPC, "https://ethereum.publicnode.com", "https://eth.drpc.org", "https://eth.merkle.io", "https://eth.llamarpc.com"];
+
+function _decodeCurve(data) {
+  const c = _saleIface.decodeFunctionResult("curves", data);
+  return {
+    creator: c.creator, cap: c.cap.toString(), sold: c.sold.toString(),
+    startPrice: c.startPrice.toString(), endPrice: c.endPrice.toString(),
+    raisedETH: c.raisedETH.toString(), graduationTarget: c.graduationTarget.toString(),
+    graduated: c.graduated, seeded: c.seeded, feeBps: Number(c.feeBps),
+    launchTime: Number(c.launchTime)
+  };
+}
+
+function _decodeObservations(countData, obsData) {
+  const total = Number(_saleIface.decodeFunctionResult("observationCount", countData)[0]);
+  if (total === 0 || !obsData) return { observations: [], total: 0 };
+  const raw = _saleIface.decodeFunctionResult("observe", obsData)[0];
+  const observations = raw.map(packed => {
+    const p = BigInt(packed);
+    return {
+      price: (p >> 128n).toString(),
+      volume: ((p >> 48n) & ((1n << 80n) - 1n)).toString(),
+      timestamp: Number((p >> 8n) & ((1n << 40n) - 1n)),
+      isSell: (p & 1n) === 1n
+    };
+  });
+  return { observations, total };
+}
+
+// Single token: batch curves() + observationCount() + observe() in one multicall (1 RPC call)
+async function getTokenChartData(tokenAddress, maxObs = 500) {
+  for (const rpc of _RPCS) {
     try {
-      const provider = new ethers.JsonRpcProvider(rpc, 1, { staticNetwork: true });
+      const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
+      // First batch: curves + observationCount + graduable (need count before we can call observe)
+      const calls1 = [
+        { target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("curves", [tokenAddress]) },
+        { target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observationCount", [tokenAddress]) },
+        { target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("graduable", [tokenAddress]) }
+      ];
+      const res1 = await mc.aggregate3(calls1);
+      const curve = res1[0].success ? _decodeCurve(res1[0].returnData) : null;
+      const graduable = res1[2].success ? _saleIface.decodeFunctionResult("graduable", res1[2].returnData)[0] : false;
+      if (!res1[1].success) return { curve, graduable, observations: [], total: 0 };
+      const total = Number(_saleIface.decodeFunctionResult("observationCount", res1[1].returnData)[0]);
+      if (total === 0) return { curve, graduable, observations: [], total: 0 };
+      // Second batch: observe (only if there are observations)
+      const end = Math.min(total, maxObs);
+      const calls2 = [
+        { target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observe", [tokenAddress, 0, end]) }
+      ];
+      const res2 = await mc.aggregate3(calls2);
+      const obsResult = res2[0].success ? _decodeObservations(res1[1].returnData, res2[0].returnData) : { observations: [], total };
+      _rpcOk(rpc);
+      return { curve, graduable, ...obsResult };
+    } catch (e) { _rpcFail(rpc); console.warn(`getTokenChartData error (${rpc}):`, e.message); }
+  }
+  return { curve: null, observations: [], total: 0 };
+}
+
+// Batch multiple tokens: curves + observationCount for all in one multicall (for profile Coins tab)
+async function getMultiTokenSummary(tokenAddresses) {
+  if (!tokenAddresses.length) return {};
+  for (const rpc of _RPCS) {
+    try {
+      const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
+      // Batch: curves() + observationCount() + observe(0, 50) + graduable() per token — 4 calls per token, 1 RPC total
+      const calls = [];
+      for (const addr of tokenAddresses) {
+        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("curves", [addr]) });
+        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observationCount", [addr]) });
+        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observe", [addr, 0, 50]) });
+        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("graduable", [addr]) });
+      }
+      const results = await mc.aggregate3(calls);
+      const out = {};
+      for (let i = 0; i < tokenAddresses.length; i++) {
+        const base = i * 4;
+        const curve = results[base].success ? _decodeCurve(results[base].returnData) : null;
+        const countOk = results[base + 1].success;
+        const obsOk = results[base + 2].success;
+        const graduable = results[base + 3].success ? _saleIface.decodeFunctionResult("graduable", results[base + 3].returnData)[0] : false;
+        let observations = [], total = 0;
+        if (countOk && obsOk) {
+          const decoded = _decodeObservations(results[base + 1].returnData, results[base + 2].returnData);
+          observations = decoded.observations;
+          total = decoded.total;
+        }
+        out[tokenAddresses[i]] = { curve, graduable, observations, total };
+      }
+      _rpcOk(rpc);
+      return out;
+    } catch (e) { _rpcFail(rpc); console.warn(`getMultiTokenSummary error (${rpc}):`, e.message); }
+  }
+  return {};
+}
+
+// Legacy wrappers for single-purpose callers
+async function getCurveState(tokenAddress) {
+  const data = await getTokenChartData(tokenAddress, 0);
+  return data.curve;
+}
+
+async function checkTokenBalance(tokenAddress, tokenType, walletAddress) {
+  for (const rpc of _RPCS) {
+    try {
       const abi = tokenType === "NFT" ? ERC721_ABI : ERC20_ABI;
-      const contract = new ethers.Contract(tokenAddress, abi, provider);
+      const contract = new ethers.Contract(tokenAddress, abi, _getProvider(rpc));
       const balance = await contract.balanceOf(walletAddress);
+      _rpcOk(rpc);
       return balance;
-    } catch (e) { console.warn(`Token balance check error (${rpc}):`, e.message); }
+    } catch (e) { _rpcFail(rpc); console.warn(`Token balance check error (${rpc}):`, e.message); }
   }
   return null; // all RPCs failed — caller should handle as retry
 }
 
-async function dbCreateGatedRoom(id, name, creator, tokenAddress, tokenType, minBalance, avatar, creatorWallet) {
+async function dbCreateGatedRoom(id, name, creator, tokenAddress, tokenType, minBalance, avatar, creatorWallet, description) {
   const wallet = creatorWallet || "creator";
+  const desc = description || null;
   if (supabase) {
     try {
-      await supabase.from("gated_rooms").insert({ id, name, creator, token_address: tokenAddress, token_type: tokenType, min_balance: minBalance, avatar: avatar || null, created_at: new Date().toISOString() });
+      await supabase.from("gated_rooms").insert({ id, name, creator, token_address: tokenAddress, token_type: tokenType, min_balance: minBalance, avatar: avatar || null, description: desc, created_at: new Date().toISOString() });
       await supabase.from("gated_room_members").insert({ room_id: id, user_name: creator, wallet_address: wallet, joined_at: new Date().toISOString() });
     } catch (e) { console.warn("Gated room create error:", e.message); }
     return;
   }
   const rooms = jsonGet("gated_rooms", "_all");
   let list; try { list = rooms ? JSON.parse(rooms) : []; } catch { list = []; }
-  list.push({ id, name, creator, tokenAddress, tokenType, minBalance, avatar, createdAt: Date.now(), members: [{ userName: creator, walletAddress: wallet }] });
+  list.push({ id, name, creator, tokenAddress, tokenType, minBalance, avatar, description: desc, createdAt: Date.now(), members: [{ userName: creator, walletAddress: wallet }] });
   jsonSet("gated_rooms", "_all", JSON.stringify(list));
 }
 
@@ -881,7 +1098,7 @@ async function dbGetGatedRoom(roomId) {
   if (supabase) {
     try {
       const { data } = await supabase.from("gated_rooms").select("*").eq("id", roomId).single();
-      if (data) return { id: data.id, name: data.name, creator: data.creator, tokenAddress: data.token_address, tokenType: data.token_type, minBalance: data.min_balance, avatar: data.avatar || null, createdAt: new Date(data.created_at).getTime() };
+      if (data) return { id: data.id, name: data.name, creator: data.creator, tokenAddress: data.token_address, tokenType: data.token_type, minBalance: data.min_balance, avatar: data.avatar || null, description: data.description || null, createdAt: new Date(data.created_at).getTime() };
     } catch {}
     return null;
   }
@@ -931,7 +1148,7 @@ async function dbGetUserGatedRooms(userName) {
       if (!data || data.length === 0) return [];
       const roomIds = data.map(d => d.room_id);
       const { data: rooms } = await supabase.from("gated_rooms").select("*").in("id", roomIds);
-      return (rooms || []).map(r => ({ id: r.id, name: r.name, creator: r.creator, tokenAddress: r.token_address, tokenType: r.token_type, minBalance: r.min_balance, avatar: r.avatar || null, createdAt: new Date(r.created_at).getTime() }));
+      return (rooms || []).map(r => ({ id: r.id, name: r.name, creator: r.creator, tokenAddress: r.token_address, tokenType: r.token_type, minBalance: r.min_balance, avatar: r.avatar || null, description: r.description || null, createdAt: new Date(r.created_at).getTime() }));
     } catch {}
     return [];
   }
@@ -996,6 +1213,121 @@ async function dbGetGatedRoomLastMsg(roomId) {
   }
   const stored = jsonGet("gated_room_messages", roomId);
   try { const msgs = stored ? JSON.parse(stored) : []; return msgs.length > 0 ? msgs[msgs.length - 1] : null; } catch { return null; }
+}
+
+// ─── Launched tokens (coin launchpad) ────────────────────────────────────────
+
+async function dbCreateLaunchedToken(id, creator, tokenAddress, name, symbol, image, roomId, description) {
+  const now = new Date().toISOString();
+  const desc = description || null;
+  if (supabase) {
+    try {
+      await supabase.from("launched_tokens").insert({ id, creator, token_address: tokenAddress.toLowerCase(), name, symbol, image: image || null, room_id: roomId, description: desc, created_at: now });
+    } catch (e) { console.warn("Launched token create error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("launched_tokens", "_all");
+  let list; try { list = stored ? JSON.parse(stored) : []; } catch { list = []; }
+  list.push({ id, creator, tokenAddress: tokenAddress.toLowerCase(), name, symbol, image: image || null, roomId, description: desc, createdAt: Date.now() });
+  jsonSet("launched_tokens", "_all", JSON.stringify(list));
+}
+
+async function dbGetLaunchedToken(tokenAddress) {
+  const addr = tokenAddress.toLowerCase();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("launched_tokens").select("*").eq("token_address", addr).single();
+      if (data) return { id: data.id, creator: data.creator, tokenAddress: data.token_address, name: data.name, symbol: data.symbol, image: data.image, roomId: data.room_id, description: data.description || null, createdAt: new Date(data.created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const stored = jsonGet("launched_tokens", "_all");
+  try { const list = stored ? JSON.parse(stored) : []; return list.find(t => t.tokenAddress === addr) || null; } catch { return null; }
+}
+
+async function dbGetLaunchedTokensByCreator(creator) {
+  const key = creator.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("launched_tokens").select("*").eq("creator", key).order("created_at", { ascending: false });
+      return (data || []).map(d => ({ id: d.id, creator: d.creator, tokenAddress: d.token_address, name: d.name, symbol: d.symbol, image: d.image, roomId: d.room_id, description: d.description || null, createdAt: new Date(d.created_at).getTime() }));
+    } catch {}
+    return [];
+  }
+  const stored = jsonGet("launched_tokens", "_all");
+  try { const list = stored ? JSON.parse(stored) : []; return list.filter(t => t.creator === key).sort((a, b) => b.createdAt - a.createdAt); } catch { return []; }
+}
+
+async function dbGetAllLaunchedTokens(limit = 50, offset = 0) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("launched_tokens").select("*").order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      return (data || []).map(d => ({ id: d.id, creator: d.creator, tokenAddress: d.token_address, name: d.name, symbol: d.symbol, image: d.image, roomId: d.room_id, description: d.description || null, createdAt: new Date(d.created_at).getTime() }));
+    } catch {}
+    return [];
+  }
+  const stored = jsonGet("launched_tokens", "_all");
+  try { const list = stored ? JSON.parse(stored) : []; return list.sort((a, b) => b.createdAt - a.createdAt).slice(offset, offset + limit); } catch { return []; }
+}
+
+async function dbUpdateLaunchedTokenTx(tokenAddress, txHash) {
+  const addr = tokenAddress.toLowerCase();
+  if (supabase) {
+    try { await supabase.from("launched_tokens").update({ tx_hash: txHash }).eq("token_address", addr); } catch {}
+    return;
+  }
+  const stored = jsonGet("launched_tokens", "_all");
+  let list; try { list = stored ? JSON.parse(stored) : []; } catch { list = []; }
+  const t = list.find(t => t.tokenAddress === addr);
+  if (t) { t.txHash = txHash; jsonSet("launched_tokens", "_all", JSON.stringify(list)); }
+}
+
+// ─── Token trades (activity log + holder tracking) ───────────────────────────
+
+async function dbRecordTrade(tokenAddress, trader, traderName, type, tokenAmount, ethAmount, txHash) {
+  const addr = tokenAddress.toLowerCase();
+  const row = { token_address: addr, trader: trader.toLowerCase(), trader_name: traderName || null, type, token_amount: tokenAmount, eth_amount: ethAmount, tx_hash: txHash, created_at: new Date().toISOString() };
+  if (supabase) {
+    try { await supabase.from("token_trades").insert(row); } catch (e) { console.warn("Trade record error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("token_trades", addr);
+  let list; try { list = stored ? JSON.parse(stored) : []; } catch { list = []; }
+  list.push({ ...row, createdAt: Date.now() });
+  jsonSet("token_trades", addr, JSON.stringify(list));
+}
+
+async function dbGetTokenTrades(tokenAddress, limit = 50) {
+  const addr = tokenAddress.toLowerCase();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("token_trades").select("*").eq("token_address", addr).order("created_at", { ascending: false }).limit(limit);
+      return (data || []).map(d => ({ trader: d.trader, traderName: d.trader_name, type: d.type, tokenAmount: d.token_amount, ethAmount: d.eth_amount, txHash: d.tx_hash, createdAt: new Date(d.created_at).getTime() }));
+    } catch {}
+    return [];
+  }
+  const stored = jsonGet("token_trades", addr);
+  try { const list = stored ? JSON.parse(stored) : []; return list.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit); } catch { return []; }
+}
+
+async function dbGetTokenTraders(tokenAddress) {
+  const addr = tokenAddress.toLowerCase();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("token_trades").select("trader, trader_name").eq("token_address", addr);
+      const unique = new Map();
+      (data || []).forEach(d => { if (!unique.has(d.trader)) unique.set(d.trader, d.trader_name); });
+      return [...unique.entries()].map(([trader, name]) => ({ trader, traderName: name }));
+    } catch {}
+    return [];
+  }
+  const stored = jsonGet("token_trades", addr);
+  try {
+    const list = stored ? JSON.parse(stored) : [];
+    const unique = new Map();
+    list.forEach(t => { if (!unique.has(t.trader)) unique.set(t.trader, t.trader_name); });
+    return [...unique.entries()].map(([trader, name]) => ({ trader, traderName: name }));
+  } catch { return []; }
 }
 
 // ─── Posts ───────────────────────────────────────────────────────────────────
@@ -1277,15 +1609,34 @@ async function dbGetGlobalFeed(limit = 30) {
 
 // ─── Notifications ──────────────────────────────────────────────────────────
 
+// Types where only one notification per (recipient, type, fromUser, postId) should exist
+const DEDUP_NOTIF_TYPES = new Set(["like", "repost", "follow"]);
+
 async function dbCreateNotification(recipient, type, fromUser, postId, preview) {
-  const id = uuidv4().slice(0, 12);
   const key = recipient.toLowerCase().trim();
+  const fromKey = fromUser.toLowerCase().trim();
   // Don't notify yourself
-  if (key === fromUser.toLowerCase().trim()) return null;
-  const notif = { id, recipient: key, type, fromUser: fromUser.toLowerCase().trim(), postId, preview: (preview || "").slice(0, 80), read: false, createdAt: Date.now() };
+  if (key === fromKey) return null;
+  // Dedup: for like/repost/follow, skip if identical notification already exists
+  if (DEDUP_NOTIF_TYPES.has(type)) {
+    if (supabase) {
+      try {
+        let q = supabase.from("notifications").select("id").eq("recipient", key).eq("type", type).eq("from_user", fromKey);
+        if (postId) q = q.eq("post_id", postId); else q = q.is("post_id", null);
+        const { data } = await q.limit(1);
+        if (data && data.length > 0) return null; // already notified
+      } catch {}
+    } else {
+      const stored = jsonGet("notifications", key);
+      let notifs; try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+      if (notifs.some(n => n.type === type && n.fromUser === fromKey && n.postId === (postId || null))) return null;
+    }
+  }
+  const id = uuidv4().slice(0, 12);
+  const notif = { id, recipient: key, type, fromUser: fromKey, postId, preview: (preview || "").slice(0, 80), read: false, createdAt: Date.now() };
   if (supabase) {
     try {
-      await supabase.from("notifications").insert({ id, recipient: key, type, from_user: notif.fromUser, post_id: postId, preview: notif.preview, read: false, created_at: new Date().toISOString() });
+      await supabase.from("notifications").insert({ id, recipient: key, type, from_user: fromKey, post_id: postId, preview: notif.preview, read: false, created_at: new Date().toISOString() });
     } catch (e) { console.warn("Notification write error:", e.message); }
   } else {
     const stored = jsonGet("notifications", key);
@@ -1435,7 +1786,7 @@ async function claimWalletInbox(walletAddress, userName, socket) {
       claimed++;
     }
     if (claimed > 0) {
-      jsonSet("direct_messages", "_all", JSON.stringify(store));
+      for (const [pair, val] of Object.entries(store)) jsonSet("direct_messages", pair, val);
       socket.emit("wallet-inbox-claimed", { count: claimed, walletAddress: addr });
       console.log(`📬 ${userName} claimed ${claimed} DM threads sent to ${addr.slice(0,6)}...`);
     }
@@ -1467,10 +1818,16 @@ async function dbSpendPairCredit(nameA, nameB, seconds) {
   const pair = [nameA, nameB].map(n => n.toLowerCase().trim()).sort().join(":");
   if (supabase) {
     try {
-      const { data } = await supabase.from("pair_meetings").select("credit_seconds").eq("pair", pair).single();
-      if (!data || (data.credit_seconds || 0) < seconds) return false;
-      await supabase.from("pair_meetings").update({ credit_seconds: data.credit_seconds - seconds }).eq("pair", pair);
-      return true;
+      // Read current value, then conditionally update with .gte() guard to prevent double-spend
+      const { data: d } = await supabase.from("pair_meetings").select("credit_seconds").eq("pair", pair).single();
+      if (!d || (d.credit_seconds || 0) < seconds) return false;
+      const { data: updated, error } = await supabase.from("pair_meetings")
+        .update({ credit_seconds: d.credit_seconds - seconds })
+        .eq("pair", pair)
+        .gte("credit_seconds", seconds) // optimistic lock: only succeeds if credits haven't changed
+        .select("pair")
+        .maybeSingle();
+      return !error && !!updated;
     } catch { return false; }
   }
   const stored = jsonGet("pair_meetings", pair);
@@ -1523,8 +1880,8 @@ async function dbGetSocialScore(name) {
     try {
       const safeKey = key.replace(/[%_\\]/g, "\\$&");
       const [{ data: d1 }, { data: d2 }] = await Promise.all([
-        supabase.from("pair_meetings").select("credit_seconds").like("pair", `${safeKey}:%`),
-        supabase.from("pair_meetings").select("credit_seconds").like("pair", `%:${safeKey}`),
+        supabase.from("pair_meetings").select("pair, credit_seconds").like("pair", `${safeKey}:%`),
+        supabase.from("pair_meetings").select("pair, credit_seconds").like("pair", `%:${safeKey}`),
       ]);
       // Dedup by pair key to avoid double-counting self-pairs (e.g. alice:alice)
       const seen = new Set();
@@ -1703,8 +2060,6 @@ setInterval(() => {
 }, 60_000);
 
 // ─── Visitor & user counters ─────────────────────────────────────────────────
-
-let totalVisitors = 0;
 
 async function dbGetCounter(key) {
   if (supabase) {
@@ -2035,8 +2390,7 @@ async function refreshUserStats(userId) {
 
 io.on("connection", (socket) => {
   // Count every socket connection as a visit
-  totalVisitors++;
-  dbIncrCounter("total_visitors");
+  dbIncrCounter("total_visitors").catch(() => {});
 
   socket.on("register", async ({ name, reconnectUserId, avatar, xUsername, walletAddress, walletSignature, walletNonce, sessionToken }) => {
     if (!name || typeof name !== "string") return;
@@ -2101,7 +2455,7 @@ io.on("connection", (socket) => {
       if (!eu.customStatus) { const p = await dbGetProfile(eu.name); eu.customStatus = p.customStatus || null; }
       socket.emit("registered", { userId: reconnectUserId, name: eu.name, reconnected: true, avatar: resolvedAvatar, stats: eu.stats, xUsername: eu.xUsername || null, walletAddress: eu.walletAddress || null, customStatus: eu.customStatus || null, autoMeet: eu.autoMeet, cooldownHours: eu.cooldownHours });
       // Backfill directory for verified users
-      dbAddToDirectory(eu.name, { displayName: eu.name, xUsername: eu.xUsername, walletAddress: eu.walletAddress, avatar: resolvedAvatar });
+      dbAddToDirectory(eu.name, { displayName: eu.name, xUsername: eu.xUsername, walletAddress: eu.walletAddress, avatar: resolvedAvatar }).catch(() => {});
       broadcastUserList();
       return;
     }
@@ -2207,7 +2561,7 @@ io.on("connection", (socket) => {
     console.log(`✅ ${trimmedName}${verifiedXUsername ? " (@" + verifiedXUsername + ")" : ""}${storedWallet ? " [" + storedWallet.slice(0,6) + "...]" : ""} registered as ${userId}`);
 
     // Add all users to directory (verified and guests)
-    dbAddToDirectory(trimmedName, { displayName: trimmedName, xUsername: verifiedXUsername || null, walletAddress: storedWallet || null, avatar: resolvedAvatar });
+    dbAddToDirectory(trimmedName, { displayName: trimmedName, xUsername: verifiedXUsername || null, walletAddress: storedWallet || null, avatar: resolvedAvatar }).catch(() => {});
 
     // Claim wallet inbox: migrate DMs sent to the raw wallet address to this user's name
     if (storedWallet) {
@@ -2462,7 +2816,7 @@ io.on("connection", (socket) => {
     publicChat.push(msg);
     if (publicChat.length > MAX_CHAT_HISTORY) publicChat.shift();
     io.emit("chat-public", msg);
-    dbSavePublicMsg(msg); // persist (non-blocking)
+    dbSavePublicMsg(msg).catch(e => console.warn("Public msg save error:", e.message));
   });
 
   socket.on("chat-react", async ({ msgId, emoji }) => {
@@ -3123,7 +3477,7 @@ io.on("connection", (socket) => {
 
   // Poke — lightweight nudge
   // ── Group chats ──────────────────────────────────────────────────────────
-  socket.on("create-group", async ({ name, inviteNames, avatar }) => {
+  socket.on("create-group", async ({ name, inviteNames, avatar, description }) => {
     if (!rateLimit(socket, "create-group", 3, 60_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
@@ -3131,8 +3485,9 @@ io.on("connection", (socket) => {
     const groupName = name.trim().slice(0, 50);
     if (!groupName) return;
     const safeAvatar = (avatar && typeof avatar === "string" && avatar.length <= MAX_AVATAR_BYTES) ? avatar : null;
+    const safeDesc = (typeof description === "string" ? description.trim().slice(0, 280) : "") || null;
     const groupId = uuidv4().slice(0, 12);
-    await dbCreateGroup(groupId, groupName, userData.name.toLowerCase().trim(), safeAvatar);
+    await dbCreateGroup(groupId, groupName, userData.name.toLowerCase().trim(), safeAvatar, safeDesc);
     // Send invites
     if (Array.isArray(inviteNames)) {
       for (const invName of inviteNames.slice(0, 100)) {
@@ -3283,7 +3638,7 @@ io.on("connection", (socket) => {
     const safeImage = (image && typeof image === "string" && image.startsWith("data:image/") && image.length <= 500_000) ? image : null;
     if (!trimmed && !safeImage) return;
     const msg = { id: uuidv4().slice(0, 10), sender: userData.name.toLowerCase().trim(), senderName: userData.name, text: trimmed, image: safeImage, ts: Date.now() };
-    dbSaveGroupMsg(groupId, msg);
+    dbSaveGroupMsg(groupId, msg).catch(e => console.warn("Group msg save error:", e.message));
     // Broadcast to all online members
     for (const m of members) {
       for (const [uid, d] of onlineUsers) {
@@ -3338,7 +3693,7 @@ io.on("connection", (socket) => {
   });
 
   // ── Token-gated rooms ────────────────────────────────────────────────────
-  socket.on("create-gated-room", async ({ name, tokenAddress, tokenType, minBalance, avatar }) => {
+  socket.on("create-gated-room", async ({ name, tokenAddress, tokenType, minBalance, avatar, description }) => {
     if (!rateLimit(socket, "create-gated-room", 3, 60_000)) return;
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
@@ -3347,9 +3702,10 @@ io.on("connection", (socket) => {
     const type = tokenType === "NFT" ? "NFT" : "ERC20";
     const minBal = (minBalance && /^\d+$/.test(minBalance) && BigInt(minBalance) > 0n) ? minBalance : "1";
     const safeAvatar = (avatar && typeof avatar === "string" && avatar.length <= MAX_AVATAR_BYTES) ? avatar : null;
+    const safeDesc = (typeof description === "string" ? description.trim().slice(0, 280) : "") || null;
     const roomId = uuidv4().slice(0, 12);
     const creatorWallet = userData.walletAddress || userData.appWalletAddress || "creator";
-    await dbCreateGatedRoom(roomId, roomName, userData.name.toLowerCase().trim(), tokenAddress.toLowerCase(), type, minBal, safeAvatar, creatorWallet);
+    await dbCreateGatedRoom(roomId, roomName, userData.name.toLowerCase().trim(), tokenAddress.toLowerCase(), type, minBal, safeAvatar, creatorWallet, safeDesc);
     socket.emit("gated-room-created", { roomId, name: roomName });
   });
 
@@ -3474,12 +3830,31 @@ io.on("connection", (socket) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     const members = await dbGetGatedRoomMembers(roomId);
-    if (!members.find(m => m.userName === userData.name.toLowerCase().trim())) return;
+    const myKey = userData.name.toLowerCase().trim();
+    const myMembership = members.find(m => m.userName === myKey);
+    if (!myMembership) return;
+    // Periodic balance recheck — boot if below minimum (every 5 min per room, skip creator)
+    const balCk = `${roomId}:${myKey}`;
+    const lastCk = socket._balChecks?.[balCk] || 0;
+    if (Date.now() - lastCk > 300_000) {
+      if (!socket._balChecks) socket._balChecks = {};
+      socket._balChecks[balCk] = Date.now();
+      const room = await dbGetGatedRoom(roomId);
+      if (room && room.creator !== myKey) {
+        const bal = await checkTokenBalance(room.tokenAddress, room.tokenType, myMembership.walletAddress);
+        if (bal !== null && bal < BigInt(room.minBalance)) {
+          await dbRemoveGatedRoomMember(roomId, myKey);
+          socket.emit("gated-room-kicked", { roomId });
+          socket.emit("gated-room-error", { message: "Removed — token balance below minimum" });
+          return;
+        }
+      }
+    }
     const trimmed = (text || "").trim().slice(0, 500);
     const safeImage = (image && typeof image === "string" && image.startsWith("data:image/") && image.length <= 500_000) ? image : null;
     if (!trimmed && !safeImage) return;
     const msg = { id: uuidv4().slice(0, 10), sender: userData.name.toLowerCase().trim(), senderName: userData.name, text: trimmed, image: safeImage, ts: Date.now() };
-    dbSaveGatedRoomMsg(roomId, msg);
+    dbSaveGatedRoomMsg(roomId, msg).catch(e => console.warn("Gated room msg save error:", e.message));
     for (const m of members) {
       for (const [uid, d] of onlineUsers) {
         if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
@@ -3502,6 +3877,230 @@ io.on("connection", (socket) => {
     socket.emit("gated-room-history", { roomId, messages, hasMore: messages.length === safeLimit });
   });
 
+  // ── Coin Launchpad ─────────────────────────────────────────────────────────
+  socket.on("launch-token", async ({ description } = {}) => {
+    if (!rateLimit(socket, "launch-token", 2, 120_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const walletAddress = userData.walletAddress || userData.appWalletAddress;
+    if (!walletAddress) { socket.emit("launch-token-error", { message: "Connect a wallet first" }); return; }
+
+    // Derive name/symbol from username — one coin per user
+    const creatorKey = userData.name.toLowerCase().trim();
+    const coinName = userData.name;           // display name as-is
+    const coinSymbol = userData.name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "COIN";
+    const avatar = userData.avatar || null;   // current pfp
+    const desc = (typeof description === "string" ? description.trim().slice(0, 280) : "") || "";
+
+    // Enforce one coin per user
+    const existing = await dbGetLaunchedTokensByCreator(creatorKey);
+    if (existing.length > 0) {
+      socket.emit("launch-token-error", { message: "You already launched your coin", tokenAddress: existing[0].tokenAddress, roomId: existing[0].roomId });
+      return;
+    }
+
+    // Build metadata URI as JSON (avatar snapshot — app always shows live pfp)
+    const metadata = JSON.stringify({
+      name: coinName, symbol: coinSymbol,
+      creator: creatorKey, creatorWallet: walletAddress,
+      image: avatar || "",
+      description: desc
+    });
+
+    // Mine a vanity salt → token address starts with 0x00 (~50ms, ~256 attempts)
+    const { salt: saltBytes, address: tokenAddress } = mineVanitySalt(walletAddress, coinName, coinSymbol);
+
+    // Create token-gated room automatically (minBalance = 1 token = 1e18 wei)
+    const roomId = uuidv4().slice(0, 12);
+    await dbCreateGatedRoom(roomId, `$${coinSymbol}`, creatorKey, tokenAddress.toLowerCase(), "ERC20", ethers.parseUnits("1", 18).toString(), avatar, walletAddress.toLowerCase(), desc);
+    // Store launched token record
+    const tokenId = uuidv4().slice(0, 12);
+    await dbCreateLaunchedToken(tokenId, creatorKey, tokenAddress, coinName, coinSymbol, null, roomId, desc);
+
+    // Return everything the frontend needs to submit the tx
+    const p = DEFAULT_LAUNCH_PARAMS;
+    // Creator fee: 0.05% buy + 0.05% sell post-graduation, paid to creator's wallet
+    const creatorFee = {
+      beneficiary: walletAddress,
+      buyBps: 5,        // 0.05% on buys
+      sellBps: 5,       // 0.05% on sells
+      buyOnInput: true,  // deduct from ETH input on buys
+      sellOnInput: false // deduct from ETH output on sells
+    };
+    socket.emit("launch-token-ready", {
+      tokenAddress, roomId, salt: saltBytes, tokenId,
+      name: coinName, symbol: coinSymbol, uri: metadata,
+      txParams: {
+        to: CURVE_SALE_ADDRESS,
+        supply: p.supply.toString(),
+        cap: p.cap.toString(),
+        lpTokens: p.lpTokens.toString(),
+        startPrice: p.startPrice.toString(),
+        endPrice: p.endPrice.toString(),
+        feeBps: p.feeBps,
+        graduationTarget: p.graduationTarget.toString(),
+        lpRecipient: p.lpRecipient,
+        poolFeeBps: p.poolFeeBps,
+        sniperFeeBps: p.sniperFeeBps,
+        sniperDuration: p.sniperDuration,
+        maxBuyBps: p.maxBuyBps,
+        creatorFee,
+        vestCliff: p.vestCliff,
+        vestDuration: p.vestDuration
+      }
+    });
+  });
+
+  socket.on("launch-token-confirmed", async ({ tokenAddress, txHash }) => {
+    if (!tokenAddress || !txHash) return;
+    const userId = socket.userId; if (!userId) return;
+    await dbUpdateLaunchedTokenTx(tokenAddress, txHash);
+    // Broadcast new token to all connected users
+    const token = await dbGetLaunchedToken(tokenAddress);
+    if (token) io.emit("new-token-launched", token);
+  });
+
+  socket.on("get-launched-tokens", async ({ limit, offset } = {}) => {
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 50);
+    const safeOffset = Math.max(parseInt(offset) || 0, 0);
+    const tokens = await dbGetAllLaunchedTokens(safeLimit, safeOffset);
+    socket.emit("launched-tokens", { tokens, hasMore: tokens.length === safeLimit });
+  });
+
+  socket.on("get-user-tokens", async ({ username }) => {
+    if (!username) return;
+    const tokens = await dbGetLaunchedTokensByCreator(username);
+    // Batch-fetch on-chain data for all tokens in 1 RPC call
+    if (tokens.length > 0) {
+      const addrs = tokens.map(t => t.tokenAddress);
+      const chainData = await getMultiTokenSummary(addrs);
+      for (const t of tokens) t.chainData = chainData[t.tokenAddress] || null;
+    }
+    socket.emit("user-tokens", { username, tokens });
+  });
+
+  socket.on("get-token-chart", async ({ tokenAddress }) => {
+    if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    const data = await getTokenChartData(tokenAddress, 500);
+    socket.emit("token-chart", { tokenAddress, ...data });
+  });
+
+  socket.on("get-token-info", async ({ tokenAddress }) => {
+    if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    const [dbToken, state] = await Promise.all([
+      dbGetLaunchedToken(tokenAddress),
+      getCurveState(tokenAddress)
+    ]);
+    socket.emit("token-info", { tokenAddress, ...(dbToken || {}), curve: state });
+  });
+
+  socket.on("record-trade", async ({ tokenAddress, type, tokenAmount, ethAmount, txHash }) => {
+    if (!rateLimit(socket, "record-trade", 10, 30_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!tokenAddress || !type || !txHash) return;
+    const walletAddress = userData.walletAddress || userData.appWalletAddress;
+    if (!walletAddress) return;
+    await dbRecordTrade(tokenAddress, walletAddress, userData.name, type, tokenAmount || "0", ethAmount || "0", txHash);
+    // Broadcast trade to all viewers of this coin
+    io.emit("token-trade", { tokenAddress, trader: walletAddress, traderName: userData.name, type, tokenAmount, ethAmount, txHash, createdAt: Date.now() });
+    // Notify creator and track earnings
+    const token = await dbGetLaunchedToken(tokenAddress);
+    if (token && token.creator !== userData.name.toLowerCase().trim()) {
+      const ethVal = parseFloat(ethAmount) || 0;
+      // Fee matches contract: buy = ethIn * feeBps/(10000+feeBps), sell = proceeds * feeBps/10000
+      const feeBps = 100; // 1%
+      const fee = type === "buy" ? ethVal * feeBps / (10000 + feeBps) : ethVal * feeBps / 10000;
+      const action = type === "buy" ? "bought" : "sold";
+      const preview = `${userData.name} ${action} ${ethVal > 0 ? ethVal.toFixed(4) + " ETH" : ""} $${token.symbol}` + (fee > 0 ? ` (+${fee.toFixed(6)} ETH fee)` : "");
+      const notif = await dbCreateNotification(token.creator, "coin_trade", userData.name, null, preview);
+      emitNotification(token.creator, notif);
+    }
+    // Auto-join buyer / boot seller from token-gated room
+    if (token?.roomId) {
+      const myKey = userData.name.toLowerCase().trim();
+      if (type === "buy") {
+        const members = await dbGetGatedRoomMembers(token.roomId);
+        if (!members.find(m => m.userName === myKey)) {
+          await dbAddGatedRoomMember(token.roomId, userData.name, walletAddress);
+          socket.emit("gated-room-joined", { roomId: token.roomId, name: `$${token.symbol}` });
+          for (const m of members) {
+            for (const [uid, d] of onlineUsers) {
+              if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+                const s = getSocketByUserId(uid);
+                if (s) s.emit("gated-room-member-joined", { roomId: token.roomId, userName: userData.name });
+                break;
+              }
+            }
+          }
+        }
+      } else if (type === "sell") {
+        // Check if seller's balance dropped below minimum — boot if so (skip creator)
+        const room = await dbGetGatedRoom(token.roomId);
+        if (room && room.creator !== myKey) {
+          const bal = await checkTokenBalance(tokenAddress, "ERC20", walletAddress);
+          if (bal !== null && bal < BigInt(room.minBalance)) {
+            await dbRemoveGatedRoomMember(token.roomId, myKey);
+            socket.emit("gated-room-kicked", { roomId: token.roomId });
+            socket.emit("gated-room-error", { message: "Removed from room — sold below minimum balance" });
+          }
+        }
+      }
+    }
+  });
+
+  socket.on("get-token-activity", async ({ tokenAddress, limit }) => {
+    if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    const trades = await dbGetTokenTrades(tokenAddress, Math.min(limit || 50, 100));
+    socket.emit("token-activity", { tokenAddress, trades });
+  });
+
+  socket.on("get-token-earnings", async ({ tokenAddress }) => {
+    if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    // Compute from on-chain observations (volume = cost for buys, proceeds for sells)
+    // Creator fee = volume * feeBps / 10000 for each trade
+    const data = await getTokenChartData(tokenAddress, 10000);
+    let totalETH = 0, totalTrades = 0, totalBuys = 0, totalSells = 0;
+    const feeBps = 100; // 1%
+    for (const obs of (data.observations || [])) {
+      const volume = Number(BigInt(obs.volume)) / 1e18; // ETH
+      const fee = volume * feeBps / 10000;
+      totalETH += fee;
+      totalTrades++;
+      if (obs.isSell) totalSells++; else totalBuys++;
+    }
+    socket.emit("token-earnings", { tokenAddress, totalETH: totalETH.toFixed(6), totalTrades, totalBuys, totalSells });
+  });
+
+  socket.on("get-token-holders", async ({ tokenAddress }) => {
+    if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
+    // Get unique traders from DB, then batch balanceOf via multicall
+    const traders = await dbGetTokenTraders(tokenAddress);
+    if (traders.length === 0) { socket.emit("token-holders", { tokenAddress, holders: [] }); return; }
+    for (const rpc of _RPCS) {
+      try {
+        const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
+        const calls = traders.map(t => ({
+          target: tokenAddress, allowFailure: true,
+          callData: _erc20BalIface.encodeFunctionData("balanceOf", [t.trader])
+        }));
+        const results = await mc.aggregate3(calls);
+        const holders = [];
+        for (let i = 0; i < traders.length; i++) {
+          const balance = results[i].success ? _erc20BalIface.decodeFunctionResult("balanceOf", results[i].returnData)[0] : 0n;
+          if (balance > 0n) {
+            holders.push({ address: traders[i].trader, name: traders[i].traderName, balance: balance.toString() });
+          }
+        }
+        holders.sort((a, b) => (BigInt(b.balance) > BigInt(a.balance) ? 1 : -1));
+        _rpcOk(rpc);
+        socket.emit("token-holders", { tokenAddress, holders });
+        return;
+      } catch (e) { _rpcFail(rpc); console.warn(`get-token-holders error (${rpc}):`, e.message); }
+    }
+    socket.emit("token-holders", { tokenAddress, holders: [] });
+  });
+
   socket.on("poke", async ({ toUserId }) => {
     if (!rateLimit(socket, "poke", 3, 30_000)) return; // 3 pokes per 30s
     const userId = socket.userId; if (!userId) return;
@@ -3515,12 +4114,13 @@ io.on("connection", (socket) => {
   });
 
   // Tip notification (unverified — no on-chain check)
-  socket.on("tip-sent", async ({ toName, amount, txHash }) => {
+  socket.on("tip-sent", async ({ toName, amount, txHash, message }) => {
     if (!rateLimit(socket, "tip", 3, 60_000)) return; // 3 tips per minute
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     if (!toName || !amount || !txHash || typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return;
-    const preview = `${amount} ETH`;
+    const safeMsg = (typeof message === "string" && message.trim()) ? message.trim().slice(0, 100) : "";
+    const preview = safeMsg ? `${amount} ETH — "${safeMsg}"` : `${amount} ETH`;
     const notif = await dbCreateNotification(toName, "tip", userData.name, null, preview);
     emitNotification(toName, notif);
   });
@@ -3571,6 +4171,37 @@ io.on("connection", (socket) => {
     const notif = await dbCreateNotification(targetKey, "tip", userData.name, null, preview);
     emitNotification(targetKey, notif);
     socket.emit("time-purchased", { toName: targetKey, seconds: secs, creditSeconds: pairInfo.creditSeconds || 0 });
+  });
+
+  // Gift time — transfer personal credit to pair credit
+  socket.on("gift-time", async ({ toName, seconds }) => {
+    if (!rateLimit(socket, "gift-time", 5, 60_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!toName || typeof toName !== "string") return;
+    const targetKey = toName.toLowerCase().trim().slice(0, 60);
+    if (targetKey === userData.name.toLowerCase().trim()) return;
+    if (!seconds || typeof seconds !== "number" || seconds < 10 || seconds > 3600) {
+      socket.emit("gift-time-error", { message: "Invalid amount" }); return;
+    }
+    const secs = Math.floor(seconds);
+    // Check sender has enough personal credit
+    const senderStats = await dbGetStats(userData.name);
+    if ((senderStats.creditSeconds || 0) < secs) {
+      socket.emit("gift-time-error", { message: `Not enough credit (you have ${senderStats.creditSeconds || 0}s)` }); return;
+    }
+    // Deduct from sender's personal credit
+    senderStats.creditSeconds -= secs;
+    await dbSetStats(userData.name, senderStats);
+    // Add to pair credit
+    await dbAddPairCredit(userData.name, targetKey, secs);
+    const pairInfo = await dbGetPairMeetings(userData.name, targetKey);
+    // Notify recipient
+    const preview = `${userData.name} gifted you ${secs}s of call time`;
+    const notif = await dbCreateNotification(targetKey, "gift", userData.name, null, preview);
+    emitNotification(targetKey, notif);
+    // Confirm to sender
+    socket.emit("time-gifted", { toName: targetKey, seconds: secs, creditSeconds: pairInfo.creditSeconds || 0, remainingPersonal: senderStats.creditSeconds });
   });
 
   // Stream/call tip — broadcast to all participants
@@ -3701,7 +4332,15 @@ io.on("connection", (socket) => {
     // Deduct prepaid credits on accept (not on ring — refunded if missed/declined)
     if (call.prepaidSeconds > 0 && caller && callee && !isPrivate) {
       const spent = await dbSpendPairCredit(caller.name, callee.name, call.prepaidSeconds);
-      if (!spent) { call.prepaidSeconds = 0; call.totalDurationMs = CALL_DURATION_MS; } // fallback to 1 min if credit vanished
+      if (!spent) {
+        call.prepaidSeconds = 0;
+        call.totalDurationMs = CALL_DURATION_MS;
+        // Notify both users that prepaid credit couldn't be applied
+        const s1 = getSocketByUserId(call.callerId);
+        const s2 = getSocketByUserId(call.calleeId);
+        if (s1) s1.emit("credit-warning", { message: "Prepaid credit unavailable — call limited to 1 min" });
+        if (s2) s2.emit("credit-warning", { message: "Prepaid credit unavailable — call limited to 1 min" });
+      }
     }
 
     const callDuration = call.totalDurationMs || CALL_DURATION_MS;
@@ -3875,7 +4514,7 @@ io.on("connection", (socket) => {
 
     userData.disconnectedAt = Date.now();
     // Update last-seen in directory for all users
-    dbAddToDirectory(userData.name, { displayName: userData.name, xUsername: userData.xUsername, walletAddress: userData.walletAddress, avatar: userData.avatar });
+    dbAddToDirectory(userData.name, { displayName: userData.name, xUsername: userData.xUsername, walletAddress: userData.walletAddress, avatar: userData.avatar }).catch(() => {});
     broadcastUserList();
     const timer = setTimeout(async () => {
       for (const [callId, call] of activeCalls) {
@@ -3923,7 +4562,7 @@ async function getFullDirectory() {
     if (dirNames.has(data.name.toLowerCase())) continue;
     dir.push({ name: data.name, xUsername: data.xUsername || null, walletAddress: data.walletAddress || null, avatar: data.avatar || null, lastSeen: Date.now() });
     dirNames.add(data.name.toLowerCase());
-    dbAddToDirectory(data.name, { displayName: data.name, xUsername: data.xUsername, walletAddress: data.walletAddress, avatar: data.avatar });
+    dbAddToDirectory(data.name, { displayName: data.name, xUsername: data.xUsername, walletAddress: data.walletAddress, avatar: data.avatar }).catch(() => {});
   }
   // Backfill from x_profiles (users who authenticated before directory existed)
   if (supabase) {
@@ -3936,7 +4575,7 @@ async function getFullDirectory() {
           const wallet = await dbGetWallet(name);
           dir.push({ name, xUsername: xp.username, walletAddress: wallet || null, avatar: xp.avatar || null, lastSeen: null });
           dirNames.add(name.toLowerCase());
-          dbAddToDirectory(name, { displayName: name, xUsername: xp.username, walletAddress: wallet, avatar: xp.avatar });
+          dbAddToDirectory(name, { displayName: name, xUsername: xp.username, walletAddress: wallet, avatar: xp.avatar }).catch(() => {});
         }
       }
     } catch {}
@@ -3946,6 +4585,15 @@ async function getFullDirectory() {
 
 app.get("/api/directory", async (req, res) => {
   res.json(await getFullDirectory());
+});
+
+// Public coin info (no auth — for link previews and external use)
+app.get("/api/coin/:address", async (req, res) => {
+  const addr = (req.params.address || "").toLowerCase().replace(/[^a-fx0-9]/g, "").slice(0, 42);
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return res.status(400).json({ error: "Invalid address" });
+  const token = await dbGetLaunchedToken(addr);
+  if (!token) return res.status(404).json({ error: "Coin not found" });
+  res.json({ tokenAddress: token.tokenAddress, name: token.name, symbol: token.symbol, creator: token.creator, description: token.description, roomId: token.roomId, createdAt: token.createdAt });
 });
 
 // Public gated room info (no auth — for gate screen)
@@ -4115,6 +4763,16 @@ app.get("/", async (req, res, next) => {
       description = `Token-gated room — ${room.tokenType} required to join`;
       url += `?gate=${gateId}`;
     }
+  } else if (req.query.coin) {
+    const coinAddr = String(req.query.coin).replace(/[^a-fA-F0-9x]/g, "").slice(0, 42);
+    if (/^0x[0-9a-fA-F]{40}$/.test(coinAddr)) {
+      const token = await dbGetLaunchedToken(coinAddr);
+      if (token) {
+        title = `$${token.symbol} by ${token.creator} on ${SITE_NAME}`;
+        description = token.description || `${token.name} — bonding curve token on ${SITE_NAME}`;
+        url += `?coin=${coinAddr}`;
+      }
+    }
   }
 
   // Read the HTML and inject meta tags
@@ -4221,7 +4879,7 @@ setInterval(async () => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, async () => {
   // Load persisted public chat into memory
-  totalVisitors = await dbGetCounter("total_visitors");
+
   const savedMsgs = await dbLoadPublicMsgs(MAX_CHAT_HISTORY);
   // Load reactions for all saved messages
   if (savedMsgs.length > 0) {
