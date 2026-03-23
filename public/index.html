@@ -396,6 +396,44 @@
     }
     .profile-banner-edit.visible { display: flex; }
     .profile-banner-edit:hover { background: rgba(255,255,255,0.3); }
+    .profile-search-wrap {
+      position: relative; padding: 0 16px; margin-top: 8px;
+    }
+    .profile-search-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 12px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .profile-search-bar input {
+      flex: 1; background: none; border: none; color: var(--text);
+      font-size: 13px; font-family: var(--font-mono); outline: none;
+      min-width: 0;
+    }
+    .profile-search-bar input::placeholder { color: #555; }
+    .profile-search-results {
+      position: absolute; left: 16px; right: 16px; top: 100%;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; max-height: 240px; overflow-y: auto;
+      display: none; z-index: 20; margin-top: 4px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .profile-search-results.active { display: block; }
+    .profile-search-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; cursor: pointer; transition: background 0.1s;
+    }
+    .profile-search-item:hover { background: var(--surface-hover); }
+    .profile-search-item:first-child { border-radius: 10px 10px 0 0; }
+    .profile-search-item:last-child { border-radius: 0 0 10px 10px; }
+    .profile-search-item:only-child { border-radius: 10px; }
+    .profile-search-pfp {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      overflow: hidden; display: flex; align-items: center; justify-content: center;
+      background-size: cover; background-position: center;
+    }
+    .profile-search-info { flex: 1; min-width: 0; }
+    .profile-search-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .profile-search-meta { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .profile-header {
       padding: 0 20px; margin-top: -44px; position: relative;
     }
@@ -2255,6 +2293,13 @@
       <button class="profile-banner-edit" id="profile-banner-edit" onclick="document.getElementById('banner-file-input').click()" title="Change banner">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
+    </div>
+    <div class="profile-search-wrap" id="profile-search-wrap">
+      <div class="profile-search-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="flex-shrink:0;opacity:0.4;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="profile-search-input" placeholder="Search users, groups..." maxlength="60" autocomplete="off">
+      </div>
+      <div class="profile-search-results" id="profile-search-results"></div>
     </div>
     <div class="profile-header">
       <div class="profile-avatar pfp-circle" id="profile-avatar"></div>
@@ -4502,12 +4547,12 @@ function renderContactCard(user, i, isOffline) {
 
   return `
     <div class="${cardClass}" style="animation-delay:${i * 0.03}s" ${onclick}>
-      <div class="avatar" style="${bg};cursor:pointer" onclick="showProfile('${escapeJSAttr(user.name)}');event.stopPropagation();">
+      <div class="avatar" style="${bg};cursor:pointer" onclick="showProfile('${escapeJSAttr(escapeHtml(user.name))}');event.stopPropagation();">
         ${inner}
         <div class="status-dot" style="background:${dotColor}"></div>
       </div>
       <div class="contact-info">
-        <span class="contact-name"><span style="cursor:pointer" onclick="showProfile('${escapeJSAttr(user.name)}');event.stopPropagation();">${escapeHtml(user.name)}</span> ${badge}</span>
+        <span class="contact-name"><span style="cursor:pointer" onclick="showProfile('${escapeJSAttr(escapeHtml(user.name))}');event.stopPropagation();">${escapeHtml(user.name)}</span> ${badge}</span>
         <span class="contact-status">${handle}${handle && statsLine ? " · " : ""}${statsLine}</span>
       </div>
       ${isOffline
@@ -6803,23 +6848,56 @@ function _doSellPct(pct) {
 }
 
 async function _resolveSigner() {
-  let signer = window._signer || window._signer || null;
-  if (!signer && myAppWallet?.privateKey) {
-    signer = new ethers.Wallet(myAppWallet.privateKey, _qProvider());
-  } else if (!signer && myAppWallet?.address && !myAppWallet?.privateKey) {
+  // 1. External wallet (MetaMask, WalletConnect, etc.)
+  let signer = window._signer || null;
+  if (signer) return signer;
+
+  // 2. App wallet with private key already in memory
+  if (myAppWallet?.privateKey) return new ethers.Wallet(myAppWallet.privateKey, _qProvider());
+
+  // 3. App wallet decrypted in sessionStorage but not yet loaded into memory
+  if (!myAppWallet?.privateKey) {
+    const sessionCached = sessionStorage.getItem("mm_app_wallet_decrypted");
+    if (sessionCached) {
+      try {
+        const w = JSON.parse(sessionCached);
+        if (w.address && w.privateKey) { myAppWallet = w; return new ethers.Wallet(w.privateKey, _qProvider()); }
+      } catch {}
+    }
+  }
+
+  // 4. App wallet encrypted in localStorage — prompt for password
+  if (myAppWallet?.address && !myAppWallet?.privateKey) {
     const stored = localStorage.getItem("mm_app_wallet");
     if (stored) {
       try {
         const data = JSON.parse(stored);
         if (data.ct) {
           const pw = await promptPassword("Enter your password to unlock your app wallet:");
-          if (pw) { const w = await decryptWalletKey(data, pw); myAppWallet = w; signer = new ethers.Wallet(w.privateKey, _qProvider()); }
+          if (pw) {
+            try {
+              const w = await decryptWalletKey(data, pw);
+              myAppWallet = w;
+              return new ethers.Wallet(w.privateKey, _qProvider());
+            } catch { showToast("Wrong password", "error"); return null; }
+          }
+          return null; // user dismissed
         }
-      } catch { showToast("Wrong password", "error"); return null; }
+      } catch (e) { console.warn("App wallet load error:", e.message); return null; }
     }
   }
-  if (!signer) { showToast("Connect a wallet first", "error"); if (typeof showWalletModal === "function") showWalletModal(); }
-  return signer;
+
+  // 5. No wallet at all — try to create one on demand
+  if (!myAppWallet) {
+    try {
+      const w = await getOrCreateAppWallet();
+      if (w?.privateKey) return new ethers.Wallet(w.privateKey, _qProvider());
+    } catch {}
+  }
+
+  showToast("Connect a wallet first", "error");
+  if (typeof showWalletModal === "function") showWalletModal();
+  return null;
 }
 
 window.executeBuy = async function() {
@@ -7186,6 +7264,10 @@ window.showFollowers = function(username) {
 function showProfile(username) {
   profileTarget = username;
   pendingProfilePostImage = null; // reset on profile switch
+  const _psi = document.getElementById("profile-search-input");
+  if (_psi) _psi.value = "";
+  const _psr = document.getElementById("profile-search-results");
+  if (_psr) _psr.classList.remove("active");
   const isWalletAddress = /^0x[0-9a-fA-F]{40}$/.test(username);
   const isXHandle = username.startsWith("@") && username.length > 1;
 
@@ -7635,29 +7717,116 @@ window.showGiftTime = function(toName) {
     return;
   }
   container.style.display = "flex";
-  const presets = [10, 30, 60, 120, 300].filter(s => s <= personal);
-  // Include full balance as an option if it's not already a preset value
-  if (personal > 10 && !presets.includes(personal)) presets.push(personal);
-  const options = presets.length > 0 ? presets : [personal];
+  const presets = [10, 30, 60].filter(s => s <= personal);
+  const btnStyle = `background:none;border:1px solid var(--border);color:var(--text);cursor:pointer;min-width:36px;height:32px;border-radius:8px;font-size:12px;font-family:var(--font-mono);transition:all 0.15s;`;
+  const activeBtnStyle = `background:rgba(74,222,128,0.12);border:1px solid var(--green);color:var(--green);`;
+  const safeName = escapeJSAttr(toName);
   container.innerHTML = `
-    <select id="gift-time-amount" style="padding:8px 10px;min-height:36px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font-mono);">
-      ${options.map(s => `<option value="${s}">${s}s</option>`).join("")}
-    </select>
-    <span style="font-size:10px;color:#555;">(${personal}s)</span>
-    <button onclick="confirmGiftTime('${escapeJSAttr(toName)}')" style="background:none;border:1px solid rgba(74,222,128,0.3);color:var(--green);cursor:pointer;min-width:36px;min-height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;transition:all 0.15s;" title="Confirm gift">&#10003;</button>
-    <button onclick="document.getElementById('gift-time-inline').style.display='none'" style="background:none;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;min-width:36px;min-height:36px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;" title="Cancel">&times;</button>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+      ${presets.map(s => `<button class="gift-preset" data-val="${s}" onclick="selectGiftPreset(this,${s})" style="${btnStyle}">${s}s</button>`).join("")}
+      <input id="gift-time-custom" type="number" min="10" max="${personal}" placeholder="custom" inputmode="numeric"
+        style="width:56px;height:32px;padding:0 6px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:var(--font-mono);text-align:center;outline:none;-moz-appearance:textfield;"
+        onfocus="document.querySelectorAll('.gift-preset').forEach(b=>b.style.cssText='${btnStyle}')"
+        oninput="document.querySelectorAll('.gift-preset').forEach(b=>b.style.cssText='${btnStyle}')" />
+      <span style="font-size:10px;color:#555;white-space:nowrap;">${personal}s avail</span>
+      <button onclick="confirmGiftTime('${safeName}',${personal})" style="${btnStyle}${activeBtnStyle}font-weight:600;padding:0 10px;" title="Send">Send</button>
+      <button onclick="document.getElementById('gift-time-inline').style.display='none'" style="${btnStyle}color:var(--text-muted);" title="Cancel">&times;</button>
+    </div>
   `;
 };
 
-window.confirmGiftTime = function(toName) {
-  const select = document.getElementById("gift-time-amount");
-  if (!select) return;
-  const seconds = parseInt(select.value);
-  if (!seconds || seconds < 10) return;
+window.selectGiftPreset = function(btn, val) {
+  const btnStyle = `background:none;border:1px solid var(--border);color:var(--text);cursor:pointer;min-width:36px;height:32px;border-radius:8px;font-size:12px;font-family:var(--font-mono);transition:all 0.15s;`;
+  const activeStyle = `background:rgba(74,222,128,0.12);border:1px solid var(--green);color:var(--green);`;
+  document.querySelectorAll(".gift-preset").forEach(b => b.style.cssText = btnStyle);
+  btn.style.cssText = btnStyle + activeStyle;
+  const custom = document.getElementById("gift-time-custom");
+  if (custom) custom.value = "";
+  btn.dataset.selected = "1";
+};
+
+window.confirmGiftTime = function(toName, maxCredit) {
+  const custom = document.getElementById("gift-time-custom");
+  const selected = document.querySelector(".gift-preset[data-selected='1']");
+  let seconds = 0;
+  if (custom && custom.value) {
+    seconds = parseInt(custom.value);
+  } else if (selected) {
+    seconds = parseInt(selected.dataset.val);
+  }
+  if (!seconds || seconds < 10) { showToast("Pick an amount (min 10s)", "error"); return; }
+  if (seconds > maxCredit) { showToast(`Max ${maxCredit}s available`, "error"); return; }
   if (socket) socket.emit("gift-time", { toName, seconds });
   const container = document.getElementById("gift-time-inline");
-  if (container) container.innerHTML = `<span style="font-size:10px;color:var(--green);">Sending...</span>`;
+  if (container) container.innerHTML = `<span style="font-size:10px;color:var(--green);">Sending ${seconds}s...</span>`;
 };
+
+// ── Profile search ──────────────────────────────────────────────────────
+(function() {
+  const input = document.getElementById("profile-search-input");
+  const results = document.getElementById("profile-search-results");
+  if (!input || !results) return;
+  let debounce = null;
+  input.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => renderProfileSearch(input.value.trim()), 120);
+  });
+  input.addEventListener("focus", () => { if (input.value.trim()) renderProfileSearch(input.value.trim()); });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".profile-search-wrap")) results.classList.remove("active");
+  });
+})();
+
+function renderProfileSearch(q) {
+  const results = document.getElementById("profile-search-results");
+  if (!q) { results.classList.remove("active"); return; }
+  const lower = q.toLowerCase();
+  let html = "";
+  // Users from directory
+  const matchedUsers = directoryData.filter(u =>
+    (u.name || "").toLowerCase().includes(lower) ||
+    (u.xUsername || "").toLowerCase().includes(lower)
+  ).slice(0, 8);
+  for (const u of matchedUsers) {
+    const av = u.avatar || users.find(o => o.name.toLowerCase() === u.name.toLowerCase())?.avatar;
+    const pfpStyle = av ? `background-image:${safeCssUrl(av)}` : `background:${getColor(u.name)}`;
+    const pfpInner = av ? "" : `<span style="font-size:9px;font-weight:700;color:#fff">${getInitials(u.name)}</span>`;
+    const online = users.find(o => o.name.toLowerCase() === u.name.toLowerCase());
+    const dot = online ? (online.status === "idle" ? "#E8A83C" : "#4ADE80") : "";
+    let meta = [];
+    if (u.xUsername) meta.push("@" + escapeHtml(u.xUsername));
+    if (online) meta.push(online.status === "idle" ? "away" : "online");
+    html += `<div class="profile-search-item" onclick="document.getElementById('profile-search-results').classList.remove('active');document.getElementById('profile-search-input').value='';showProfile('${escapeJSAttr(u.name)}')">
+      <div class="profile-search-pfp" style="${pfpStyle}">${pfpInner}</div>
+      <div class="profile-search-info">
+        <div class="profile-search-name">${escapeHtml(u.name)}${dot ? ` <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};vertical-align:middle;margin-left:2px;"></span>` : ""}</div>
+        ${meta.length ? `<div class="profile-search-meta">${meta.join(" · ")}</div>` : ""}
+      </div>
+    </div>`;
+  }
+  // Groups
+  const matchedGroups = (typeof myGroups !== "undefined" ? myGroups : []).filter(g =>
+    (g.name || "").toLowerCase().includes(lower)
+  ).slice(0, 4);
+  if (matchedGroups.length > 0) {
+    for (const g of matchedGroups) {
+      const pfpStyle = g.avatar ? `background-image:${safeCssUrl(g.avatar)}` : `background:${getColor(g.name)}`;
+      const pfpInner = g.avatar ? "" : `<span style="font-size:9px;font-weight:700;color:#fff">${getInitials(g.name)}</span>`;
+      html += `<div class="profile-search-item" onclick="document.getElementById('profile-search-results').classList.remove('active');document.getElementById('profile-search-input').value='';openGroupChat('${escapeJSAttr(g.id)}')">
+        <div class="profile-search-pfp" style="${pfpStyle}">${pfpInner}</div>
+        <div class="profile-search-info">
+          <div class="profile-search-name">${escapeHtml(g.name)}</div>
+          <div class="profile-search-meta">group · ${g.members?.length || 0} members</div>
+        </div>
+      </div>`;
+    }
+  }
+  if (!html) {
+    html = `<div style="padding:12px;text-align:center;font-size:12px;color:var(--text-muted);">No results</div>`;
+  }
+  results.innerHTML = html;
+  results.classList.add("active");
+}
 
 window.editProfileStatus = function() {
   document.getElementById("status-input").value = myCustomStatus || "";
@@ -8106,10 +8275,15 @@ window.showCreateGroup = function() {
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">Invite members</div>
       <input id="group-invite-search" type="text" placeholder="Search users..." style="width:100%;padding:7px 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;margin-bottom:6px;box-sizing:border-box;">
       <div id="group-invite-list" style="max-height:160px;overflow-y:auto;margin-bottom:14px;">
-        ${dirUsers.map(u => `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;font-size:12px;" data-name="${escapeHtml(u.name.toLowerCase())}">
+        ${dirUsers.map(u => {
+          const av = u.avatar || users.find(o => o.name.toLowerCase() === u.name.toLowerCase())?.avatar;
+          const pfpStyle = av ? `background:${safeCssUrl(av)} center/cover` : `background:${getColor(u.name)};display:flex;align-items:center;justify-content:center`;
+          const pfpInner = av ? "" : `<span style="font-size:8px;font-weight:700;color:#fff;line-height:1">${getInitials(u.name)}</span>`;
+          return `<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;font-size:12px;" data-name="${escapeHtml(u.name.toLowerCase())}">
           <input type="checkbox" value="${escapeJSAttr(u.name)}" class="group-invite-cb" style="accent-color:var(--red);">
+          <div style="width:24px;height:24px;border-radius:50%;flex-shrink:0;overflow:hidden;${pfpStyle}">${pfpInner}</div>
           <span>${escapeHtml(u.name)}${u.xUsername ? ` <span style="color:var(--text-muted)">@${escapeHtml(u.xUsername)}</span>` : ""}</span>
-        </label>`).join("")}
+        </label>`}).join("")}
       </div>
     ` : '<div style="font-size:11px;color:#555;margin-bottom:14px;">No users in directory yet — you can invite later.</div>'}
     <button onclick="submitCreateGroup()" style="width:100%;padding:11px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Create Group</button>
@@ -9235,7 +9409,9 @@ $("#sign-out-link").addEventListener("click", (e) => {
   // Reset state
   myUserId = null; myName = ""; myAvatar = null; myStats = null; myXUsername = null; myWalletAddress = null; myCustomStatus = null; myContacts = []; myAppWallet = null;
   sessionStorage.removeItem("e2e_keypair_decrypted"); sessionStorage.removeItem("mm_app_wallet_decrypted");
-  // Keep e2e_keypair and mm_app_wallet in localStorage — they're encrypted and needed on re-login
+  // Keep encrypted keys in localStorage (needed on re-login), but clear plaintext ones to prevent cross-user leakage
+  try { const kp = JSON.parse(localStorage.getItem("e2e_keypair") || "{}"); if (kp.privateKey && !kp.encrypted) localStorage.removeItem("e2e_keypair"); } catch {}
+  try { const aw = JSON.parse(localStorage.getItem("mm_app_wallet") || "{}"); if (aw.privateKey && !aw.ct) localStorage.removeItem("mm_app_wallet"); } catch {}
   localStorage.removeItem("mm_wallet_prompted");
   // Back to login
   showScreen("login-screen");
