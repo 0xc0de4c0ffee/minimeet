@@ -7260,7 +7260,7 @@ function showProfile(username) {
 
   // For unregistered 0x addresses or @handles, render minimal profile immediately
   if (isWalletAddress || isXHandle) {
-    const svgEthSmall = `<svg width="12" height="12" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>`;
+    const svgEthSmall = `<svg width="12" height="12" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".6" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/></g></svg>`;
     const svgMsgSmall = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`;
     const svgLinkSmall = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`;
     let fallbackActions = "";
@@ -7348,11 +7348,12 @@ function handleProfileData(data) {
 
   // Wallet chips — separate row
   let walletsHtml = "";
+  const svgEthChip = `<svg width="10" height="10" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".6" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/></g></svg>`;
   if (data.walletAddress) {
-    walletsHtml += `<a class="profile-wallet-chip" href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" title="${escapeHtml(data.walletAddress)}"><svg width="10" height="10" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
+    walletsHtml += `<a class="profile-wallet-chip" href="https://etherscan.io/address/${escapeHtml(data.walletAddress)}" target="_blank" rel="noopener" title="${escapeHtml(data.walletAddress)}">${svgEthChip}${escapeHtml(data.walletAddress.slice(0,6))}...${escapeHtml(data.walletAddress.slice(-4))}</a>`;
   }
   if (data.appWalletAddress && data.appWalletAddress !== data.walletAddress) {
-    walletsHtml += `<a class="profile-wallet-chip app-wallet" href="https://etherscan.io/address/${escapeHtml(data.appWalletAddress)}" target="_blank" rel="noopener" title="app wallet: ${escapeHtml(data.appWalletAddress)}"><svg width="10" height="10" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF"><path fill-opacity=".6" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/></g></svg>${escapeHtml(data.appWalletAddress.slice(0,6))}...${escapeHtml(data.appWalletAddress.slice(-4))}</a>`;
+    walletsHtml += `<a class="profile-wallet-chip app-wallet" href="https://etherscan.io/address/${escapeHtml(data.appWalletAddress)}" target="_blank" rel="noopener" title="app wallet: ${escapeHtml(data.appWalletAddress)}">${svgEthChip}${escapeHtml(data.appWalletAddress.slice(0,6))}...${escapeHtml(data.appWalletAddress.slice(-4))}</a>`;
   }
   $("#profile-wallets").innerHTML = walletsHtml;
   // Custom status (separate from bio)
