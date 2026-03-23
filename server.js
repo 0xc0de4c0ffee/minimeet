@@ -678,12 +678,12 @@ async function dbGetProfile(name) {
   if (supabase) {
     try {
       const { data } = await supabase.from("user_profiles").select("*").eq("name", key).single();
-      if (data) { const p = { bio: data.bio || null, banner: data.banner || null, customStatus: data.custom_status || null, e2eKey: data.e2e_key || null, appWallet: data.app_wallet || null, appWalletAddress: data.app_wallet_address || null }; cacheSet(profileCache,key, p); return p; }
+      if (data) { const p = { bio: data.bio || null, banner: data.banner || null, customStatus: data.custom_status || null, e2eKey: data.e2e_key || null, appWallet: data.app_wallet || null, appWalletAddress: data.app_wallet_address || null, callRate: data.call_rate || null }; cacheSet(profileCache,key, p); return p; }
     } catch {}
-    return { bio: null, banner: null, customStatus: null, e2eKey: null, appWallet: null, appWalletAddress: null };
+    return { bio: null, banner: null, customStatus: null, e2eKey: null, appWallet: null, appWalletAddress: null, callRate: null };
   }
   const stored = jsonGet("user_profiles", key);
-  const defaultProfile = { bio: null, banner: null, customStatus: null, e2eKey: null, appWallet: null, appWalletAddress: null };
+  const defaultProfile = { bio: null, banner: null, customStatus: null, e2eKey: null, appWallet: null, appWalletAddress: null, callRate: null };
   let p; try { p = stored ? { ...defaultProfile, ...JSON.parse(stored) } : { ...defaultProfile }; } catch { p = { ...defaultProfile }; }
   cacheSet(profileCache,key, p);
   return p;
@@ -698,6 +698,7 @@ async function dbSetProfile(name, profile) {
       if (profile.appWallet !== undefined) row.app_wallet = profile.appWallet;
       if (profile.appWalletAddress !== undefined) row.app_wallet_address = profile.appWalletAddress;
       if (profile.e2eKey !== undefined) row.e2e_key = profile.e2eKey;
+      if (profile.callRate !== undefined) row.call_rate = profile.callRate;
       await supabase.from("user_profiles").upsert(row);
     } catch (e) { console.warn("Profile write error:", e.message); }
     return;
@@ -772,6 +773,21 @@ async function dbGetUserPosts(author, limit = 20, offset = 0) {
   let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
   const userPosts = posts.filter(p => p.author === key && !p.parentId).sort((a, b) => b.createdAt - a.createdAt);
   return { posts: userPosts.slice(offset, offset + limit), total: userPosts.length };
+}
+
+async function dbGetUserReplies(author, limit = 20, offset = 0) {
+  const key = author.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data, count } = await supabase.from("posts").select("*", { count: "exact" }).eq("author", key).not("parent_id", "is", null).order("created_at", { ascending: false }).range(offset, offset + limit - 1);
+      return { posts: (data || []).map(d => ({ id: d.id, author: d.author, text: d.text, parentId: d.parent_id, rootId: d.root_id, image: d.image || null, likeCount: d.like_count || 0, replyCount: d.reply_count || 0, createdAt: new Date(d.created_at).getTime() })), total: count || 0 };
+    } catch (e) { console.warn("Replies read error:", e.message); }
+    return { posts: [], total: 0 };
+  }
+  const stored = jsonGet("posts", "_all");
+  let posts; try { posts = stored ? JSON.parse(stored) : []; } catch { posts = []; }
+  const userReplies = posts.filter(p => p.author === key && p.parentId).sort((a, b) => b.createdAt - a.createdAt);
+  return { posts: userReplies.slice(offset, offset + limit), total: userReplies.length };
 }
 
 async function dbGetThread(rootId) {
@@ -1173,6 +1189,25 @@ async function dbSpendPairCredit(nameA, nameB, seconds) {
   return true;
 }
 
+async function dbAddPairCredit(nameA, nameB, seconds) {
+  const pair = [nameA, nameB].map(n => n.toLowerCase().trim()).sort().join(":");
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("pair_meetings").select("credit_seconds").eq("pair", pair).single();
+      if (data) {
+        await supabase.from("pair_meetings").update({ credit_seconds: (data.credit_seconds || 0) + seconds }).eq("pair", pair);
+      } else {
+        await supabase.from("pair_meetings").insert({ pair, meet_count: 0, credit_seconds: seconds, last_met: new Date().toISOString() });
+      }
+    } catch (e) { console.warn("Pair credit add error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("pair_meetings", pair);
+  let pm; try { pm = stored ? JSON.parse(stored) : { meetCount: 0, creditSeconds: 0 }; } catch { pm = { meetCount: 0, creditSeconds: 0 }; }
+  pm.creditSeconds += seconds;
+  jsonSet("pair_meetings", pair, JSON.stringify(pm));
+}
+
 async function dbGetPairMeetings(nameA, nameB) {
   const pair = [nameA, nameB].map(n => n.toLowerCase().trim()).sort().join(":");
   if (supabase) {
@@ -1463,18 +1498,20 @@ async function dbGetDirectoryEntry(name) {
 
 async function countFollowers(name, xUsername) {
   let followers = 0;
+  const self = name.toLowerCase().trim();
   if (supabase) {
     try {
-      const { count: c1 } = await supabase.from("contacts").select("owner", { count: "exact", head: true }).eq("contact_name", name);
+      const { count: c1 } = await supabase.from("contacts").select("owner", { count: "exact", head: true }).eq("contact_name", name).neq("owner", self);
       followers = c1 || 0;
       if (xUsername) {
-        const { count: c2 } = await supabase.from("contacts").select("owner", { count: "exact", head: true }).eq("contact_name", "@" + xUsername.toLowerCase());
+        const { count: c2 } = await supabase.from("contacts").select("owner", { count: "exact", head: true }).eq("contact_name", "@" + xUsername.toLowerCase()).neq("owner", self);
         followers += c2 || 0;
       }
     } catch {}
   } else {
     const store = jsonStores["contacts"] || {};
-    for (const val of Object.values(store)) {
+    for (const [owner, val] of Object.entries(store)) {
+      if (owner === self) continue;
       try {
         const contacts = JSON.parse(val);
         if (contacts.includes(name) || (xUsername && contacts.includes("@" + xUsername.toLowerCase()))) followers++;
@@ -1486,18 +1523,20 @@ async function countFollowers(name, xUsername) {
 
 async function getFollowerNames(name, xUsername) {
   const followers = [];
+  const self = name.toLowerCase().trim();
   if (supabase) {
     try {
-      const { data: d1 } = await supabase.from("contacts").select("owner").eq("contact_name", name);
+      const { data: d1 } = await supabase.from("contacts").select("owner").eq("contact_name", name).neq("owner", self);
       if (d1) for (const r of d1) followers.push(r.owner);
       if (xUsername) {
-        const { data: d2 } = await supabase.from("contacts").select("owner").eq("contact_name", "@" + xUsername.toLowerCase());
+        const { data: d2 } = await supabase.from("contacts").select("owner").eq("contact_name", "@" + xUsername.toLowerCase()).neq("owner", self);
         if (d2) for (const r of d2) if (!followers.includes(r.owner)) followers.push(r.owner);
       }
     } catch {}
   } else {
     const store = jsonStores["contacts"] || {};
     for (const [owner, val] of Object.entries(store)) {
+      if (owner === self) continue;
       try {
         const contacts = JSON.parse(val);
         if (contacts.includes(name) || (xUsername && contacts.includes("@" + xUsername.toLowerCase()))) {
@@ -1960,6 +1999,11 @@ io.on("connection", (socket) => {
   socket.on("add-contact", async ({ contactName }) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
+    // Don't allow saving yourself
+    const targetKey = (contactName || "").toLowerCase().trim();
+    const selfName = userData.name.toLowerCase().trim();
+    const selfX = userData.xUsername ? "@" + userData.xUsername.toLowerCase() : null;
+    if (targetKey === selfName || targetKey === selfX) return;
     await dbAddContact(userData.name, contactName);
     const contacts = await dbGetContacts(userData.name);
     socket.emit("contacts-list", contacts);
@@ -2286,7 +2330,7 @@ io.on("connection", (socket) => {
       if (parent) {
         io.emit("post-reply-count", { postId: parentId, replyCount: parent.replyCount || 0 });
         if (parent.author !== userData.name.toLowerCase()) {
-          const notif = await dbCreateNotification(parent.author, "reply", userData.name, parentId, trimmed);
+          const notif = await dbCreateNotification(parent.author, "reply", userData.name, parent.rootId || parentId, trimmed);
           emitNotification(parent.author, notif);
         }
       }
@@ -2402,6 +2446,24 @@ io.on("connection", (socket) => {
     socket.emit("user-posts", { username, posts: merged, total: merged.length });
   });
 
+  socket.on("get-user-replies", async ({ username, limit, offset }) => {
+    if (!username || typeof username !== "string") return;
+    const result = await dbGetUserReplies(username, limit || 20, offset || 0);
+    const userData = socket.userId ? onlineUsers.get(socket.userId) : null;
+    const myNameLower = userData ? userData.name.toLowerCase() : "";
+    const avatarCacheLocal = {};
+    await Promise.all(result.posts.map(async (post) => {
+      post.authorName = post.author;
+      if (!avatarCacheLocal[post.author]) avatarCacheLocal[post.author] = await dbGetAvatar(post.author) || null;
+      post.authorAvatar = avatarCacheLocal[post.author];
+      const [likers, reposters] = await Promise.all([dbGetPostLikes(post.id), dbGetPostReposters(post.id)]);
+      post.likers = likers;
+      post.liked = myNameLower ? likers.includes(myNameLower) : false;
+      post.reposters = reposters;
+    }));
+    socket.emit("user-replies", { username, posts: result.posts, total: result.total });
+  });
+
   socket.on("get-thread", async ({ postId }) => {
     if (!postId) return;
     const thread = await dbGetThread(postId);
@@ -2499,7 +2561,7 @@ io.on("connection", (socket) => {
       countFollowers(key, xUsername),
     ]);
 
-    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, appWalletAddress: profile.appWalletAddress || null, stats, postCount: 0, followers, customStatus: profile.customStatus || null, socialScore, pairInfo });
+    socket.emit("profile", { username: key, displayName, bio: profile.bio, banner: profile.banner, avatar, xUsername, walletAddress: wallet, appWalletAddress: profile.appWalletAddress || null, stats, postCount: 0, followers, customStatus: profile.customStatus || null, socialScore, pairInfo, callRate: profile.callRate || null });
   });
 
   socket.on("update-profile", async ({ bio, banner }) => {
@@ -2743,6 +2805,54 @@ io.on("connection", (socket) => {
     const preview = `${amount} ETH`;
     const notif = await dbCreateNotification(toName, "tip", userData.name, null, preview);
     emitNotification(toName, notif);
+  });
+
+  // ── Call rate (sell your time) ──────────────────────────────────────────
+  socket.on("set-call-rate", async ({ rate }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    // rate is wei per second as a string, or null to clear
+    const safeRate = (rate && /^\d+$/.test(rate) && BigInt(rate) > 0n) ? rate : null;
+    const profile = await dbGetProfile(userData.name);
+    profile.callRate = safeRate;
+    await dbSetProfile(userData.name, profile);
+    socket.emit("call-rate-set", { callRate: safeRate });
+    broadcastUserList();
+  });
+
+  socket.on("buy-time", async ({ toName, seconds, amount, txHash }) => {
+    if (!rateLimit(socket, "buy-time", 3, 60_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!toName || typeof toName !== "string") return;
+    const targetKey = toName.toLowerCase().trim().slice(0, 60);
+    // Can't buy time with yourself
+    if (targetKey === userData.name.toLowerCase().trim()) return;
+    if (!seconds || typeof seconds !== "number" || seconds < 1 || seconds > 36000) return;
+    if (!amount || !txHash || typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) return;
+    // Verify the target exists and has a call rate
+    const targetProfile = await dbGetProfile(targetKey);
+    if (!targetProfile.callRate) { socket.emit("buy-time-error", { message: "This user hasn't set a call rate" }); return; }
+    // Sanity check: verify amount ≈ seconds × rate
+    const secs = Math.floor(seconds);
+    try {
+      const rateWei = BigInt(targetProfile.callRate);
+      const expectedWei = rateWei * BigInt(secs);
+      const claimedWei = ethers.parseEther(amount);
+      // Allow 1% tolerance for rounding
+      const diff = claimedWei > expectedWei ? claimedWei - expectedWei : expectedWei - claimedWei;
+      if (diff > expectedWei / 100n && diff > ethers.parseEther("0.0001")) {
+        socket.emit("buy-time-error", { message: "Amount doesn't match the rate" }); return;
+      }
+    } catch { socket.emit("buy-time-error", { message: "Invalid amount" }); return; }
+    // Add credits to the pair
+    await dbAddPairCredit(userData.name, targetKey, secs);
+    const pairInfo = await dbGetPairMeetings(userData.name, targetKey);
+    // Notify the seller
+    const preview = `${amount} ETH for ${secs}s call time`;
+    const notif = await dbCreateNotification(targetKey, "tip", userData.name, null, preview);
+    emitNotification(targetKey, notif);
+    socket.emit("time-purchased", { toName: targetKey, seconds: secs, creditSeconds: pairInfo.creditSeconds || 0 });
   });
 
   // Stream/call tip — broadcast to all participants

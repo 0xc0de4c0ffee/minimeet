@@ -2182,7 +2182,10 @@
       <div class="profile-actions" id="profile-actions"></div>
     </div>
     <div class="profile-posts">
-      <div class="profile-posts-title">Posts</div>
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:8px;">
+        <button class="profile-posts-tab active" id="profile-tab-posts" onclick="switchProfileTab('posts')" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid var(--text);color:var(--text);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Posts</button>
+        <button class="profile-posts-tab" id="profile-tab-replies" onclick="switchProfileTab('replies')" style="flex:1;padding:8px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);font-size:12px;font-family:var(--font-mono);cursor:pointer;">Replies</button>
+      </div>
       <div id="profile-compose"></div>
       <div id="profile-posts-list"></div>
     </div>
@@ -5421,10 +5424,25 @@ function connectSocket() {
   socket.on("user-posts", ({ username, posts, total }) => {
     const list = document.getElementById("profile-posts-list");
     if (!list) return;
-    // Guard against stale responses from a previous profile view
     if (profileTarget && username && username.toLowerCase() !== profileTarget.toLowerCase()) return;
+    // Only render if Posts tab is active
+    const postsTab = document.getElementById("profile-tab-posts");
+    if (postsTab && !postsTab.classList.contains("active")) return;
     if (posts.length === 0) {
       list.innerHTML = '<div class="post-empty">No posts yet</div>';
+      return;
+    }
+    list.innerHTML = posts.map(p => renderPost(p)).join("");
+  });
+
+  socket.on("user-replies", ({ username, posts, total }) => {
+    const list = document.getElementById("profile-posts-list");
+    if (!list) return;
+    if (profileTarget && username && username.toLowerCase() !== profileTarget.toLowerCase()) return;
+    const repliesTab = document.getElementById("profile-tab-replies");
+    if (repliesTab && !repliesTab.classList.contains("active")) return;
+    if (posts.length === 0) {
+      list.innerHTML = '<div class="post-empty">No replies yet</div>';
       return;
     }
     list.innerHTML = posts.map(p => renderPost(p)).join("");
@@ -5590,6 +5608,19 @@ function connectSocket() {
     updateSocialScoreBase(score.score);
     startSocialScoreTicker();
     updateMyStats();
+  });
+
+  socket.on("time-purchased", ({ toName, seconds, creditSeconds }) => {
+    showToast(`${seconds}s credit added with ${toName} (${creditSeconds}s total)`, "success", 3000);
+  });
+
+  socket.on("buy-time-error", ({ message }) => {
+    showToast(message || "Purchase failed", "error");
+  });
+
+  socket.on("call-rate-set", ({ callRate }) => {
+    // Refresh own profile if viewing it
+    if (profileTarget && profileTarget.toLowerCase() === myName?.toLowerCase()) showProfile(profileTarget);
   });
 
   // Bundled init response — processes contacts, chat, notifications, score, pairs, feed in one go
@@ -5880,6 +5911,32 @@ function linkify(text) {
 let profileTarget = null; // username being viewed
 let profileIsOwn = false;
 
+window.switchProfileTab = function(tab) {
+  const postsTab = document.getElementById("profile-tab-posts");
+  const repliesTab = document.getElementById("profile-tab-replies");
+  const list = document.getElementById("profile-posts-list");
+  if (!postsTab || !repliesTab || !list) return;
+  if (tab === "posts") {
+    postsTab.classList.add("active");
+    postsTab.style.borderBottomColor = "var(--text)";
+    postsTab.style.color = "var(--text)";
+    repliesTab.classList.remove("active");
+    repliesTab.style.borderBottomColor = "transparent";
+    repliesTab.style.color = "var(--text-muted)";
+    list.innerHTML = '<div class="post-empty">Loading...</div>';
+    if (socket && profileTarget) socket.emit("get-user-posts", { username: profileTarget });
+  } else {
+    repliesTab.classList.add("active");
+    repliesTab.style.borderBottomColor = "var(--text)";
+    repliesTab.style.color = "var(--text)";
+    postsTab.classList.remove("active");
+    postsTab.style.borderBottomColor = "transparent";
+    postsTab.style.color = "var(--text-muted)";
+    list.innerHTML = '<div class="post-empty">Loading...</div>';
+    if (socket && profileTarget) socket.emit("get-user-replies", { username: profileTarget });
+  }
+};
+
 window.showFollowers = function(username) {
   if (!socket) return;
   socket.emit("get-followers", { username });
@@ -5918,6 +5975,10 @@ function showProfile(username) {
   $("#profile-actions").innerHTML = "";
   $("#profile-posts-list").innerHTML = '<div class="post-empty">Loading...</div>';
   $("#profile-compose").innerHTML = "";
+  // Reset to Posts tab
+  const pt = document.getElementById("profile-tab-posts"), rt = document.getElementById("profile-tab-replies");
+  if (pt) { pt.classList.add("active"); pt.style.borderBottomColor = "var(--text)"; pt.style.color = "var(--text)"; }
+  if (rt) { rt.classList.remove("active"); rt.style.borderBottomColor = "transparent"; rt.style.color = "var(--text-muted)"; }
   $("#profile-banner").style.backgroundImage = "";
   const avatarEl = $("#profile-avatar");
   const c = getColor(resolvedName);
@@ -6056,6 +6117,23 @@ function handleProfileData(data) {
   if (data.stats?.received > 0) statsHtml += `<div><span>${pickupRate(data.stats)}%</span> pickup</div>`;
   if (data.stats?.totalOnlineMs > 60_000) statsHtml += `<div><span>${formatOnlineTime(data.stats.totalOnlineMs)}</span> online</div>`;
   // Pair relationship info (only when viewing someone else's profile)
+  // Call rate display
+  if (data.callRate && !profileIsOwn) {
+    const rateWei = BigInt(data.callRate);
+    const ratePerMin = rateWei * 60n;
+    const ethPerMin = ethers.formatEther(ratePerMin);
+    statsHtml += `<div><span>${parseFloat(ethPerMin)}</span> ETH/min</div>`;
+  }
+  if (profileIsOwn) {
+    if (data.callRate) {
+      const rateWei = BigInt(data.callRate);
+      const ratePerMin = rateWei * 60n;
+      const ethPerMin = ethers.formatEther(ratePerMin);
+      statsHtml += `<div style="cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="editCallRate()"><span>${parseFloat(ethPerMin)}</span> ETH/min</div>`;
+    } else {
+      statsHtml += `<div style="cursor:pointer;color:#555;" onclick="editCallRate()">set rate...</div>`;
+    }
+  }
   if (!profileIsOwn && data.pairInfo && data.pairInfo.meetCount > 0) {
     statsHtml += `<div style="width:100%;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);font-size:10px;color:#555;">You &amp; ${escapeHtml(data.displayName || data.username)}: <span style="color:var(--text);">${data.pairInfo.meetCount}</span> meet${data.pairInfo.meetCount !== 1 ? "s" : ""} · <span style="color:var(--text);">${data.pairInfo.creditSeconds || 0}s</span> credit</div>`;
   }
@@ -6095,7 +6173,10 @@ function handleProfileData(data) {
     if (tipAddr) {
       actionsHtml += `<button style="${iconBtnStyle}" onclick="tipUser('${escapeJSAttr(escapeHtml(tipAddr))}','${escapeJSAttr(escapeHtml(data.displayName||data.username))}')"><svg width="16" height="16" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="#FFF" fill-rule="nonzero"><path fill-opacity=".602" d="M16.498 4v8.87l7.497 3.35z"/><path d="M16.498 4L9 16.22l7.498-3.35z"/><path fill-opacity=".602" d="M16.498 21.968v6.027L24 17.616z"/><path d="M16.498 27.995v-6.028L9 17.616z"/><path fill-opacity=".2" d="M16.498 20.573l7.497-4.353-7.497-3.348z"/><path fill-opacity=".602" d="M9 16.22l7.498 4.353v-7.701z"/></g></svg></button>`;
     }
-    // Share icon (no border)
+    // Buy time button (only if they have a rate and a wallet to receive)
+    if (data.callRate && tipAddr) {
+      actionsHtml += `<button style="${iconBtnStyle}" onclick="showBuyTime('${escapeJSAttr(escapeHtml(data.displayName||data.username))}','${escapeJSAttr(data.callRate)}','${escapeJSAttr(escapeHtml(tipAddr))}')" title="Buy call time"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></button>`;
+    }
     // Follow/star button
     const contactKey = data.xUsername ? "@" + data.xUsername.toLowerCase() : (data.displayName || data.username).toLowerCase();
     const isFollowing = myContacts.includes(contactKey);
@@ -6134,6 +6215,123 @@ window.editBio = function() {
       <button class="profile-action-btn" onclick="showProfile(profileTarget)">Cancel</button>
     </div>`;
   document.getElementById("bio-edit").focus();
+};
+
+window.editCallRate = function() {
+  const statsRow = $("#profile-stats-row");
+  if (!statsRow) return;
+  // Find or create the inline editor
+  let editor = document.getElementById("call-rate-editor");
+  if (editor) { editor.remove(); return; } // toggle off
+  editor = document.createElement("div");
+  editor.id = "call-rate-editor";
+  editor.style.cssText = "width:100%;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;";
+  editor.innerHTML = `
+    <input type="number" id="call-rate-input" min="0" step="0.0001" placeholder="0.00" style="width:80px;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--font-mono);text-align:right;">
+    <span style="font-size:11px;color:var(--text-muted);">ETH/min</span>
+    <button onclick="saveCallRate()" style="padding:4px 10px;background:var(--red);border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;">Save</button>
+    <button onclick="document.getElementById('call-rate-editor')?.remove()" style="padding:4px 8px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">✕</button>
+  `;
+  statsRow.appendChild(editor);
+  document.getElementById("call-rate-input").focus();
+};
+
+window.saveCallRate = function() {
+  const input = document.getElementById("call-rate-input");
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (!val || val <= 0) {
+    if (socket) socket.emit("set-call-rate", { rate: null });
+    showToast("Rate cleared", "success");
+  } else {
+    const weiPerMin = ethers.parseEther(val.toString());
+    const weiPerSec = weiPerMin / 60n;
+    if (socket) socket.emit("set-call-rate", { rate: weiPerSec.toString() });
+    showToast(`Rate set: ${val} ETH/min`, "success");
+  }
+  document.getElementById("call-rate-editor")?.remove();
+  setTimeout(() => { if (profileTarget) showProfile(profileTarget); }, 500);
+};
+
+window.showBuyTime = function(toName, callRateStr, toAddr) {
+  const rateWei = BigInt(callRateStr); // wei per second
+  const ratePerMin = rateWei * 60n;
+  const ethPerMin = parseFloat(ethers.formatEther(ratePerMin));
+
+  const existing = document.getElementById("buy-time-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "buy-time-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;width:320px;max-width:90vw;text-align:center;";
+  card.innerHTML = `
+    <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Buy time with ${escapeHtml(toName)}</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">${ethPerMin} ETH/min</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <input type="number" id="buy-time-mins" min="1" max="600" value="5" step="1" style="flex:1;padding:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;text-align:center;font-family:var(--font-mono);" oninput="updateBuyTimeTotal()">
+      <span style="font-size:13px;color:var(--text-muted);">minutes</span>
+    </div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:16px;" id="buy-time-total">${(ethPerMin * 5).toFixed(6)} ETH</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="this.closest('#buy-time-overlay').remove()" style="flex:1;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:13px;">Cancel</button>
+      <button id="buy-time-confirm" onclick="confirmBuyTime('${escapeJSAttr(toName)}','${callRateStr}','${escapeJSAttr(toAddr)}')" style="flex:1;padding:10px;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:13px;font-weight:600;">Buy</button>
+    </div>
+  `;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  window.updateBuyTimeTotal = function() {
+    const mins = parseFloat(document.getElementById("buy-time-mins")?.value) || 0;
+    const total = ethPerMin * mins;
+    const el = document.getElementById("buy-time-total");
+    if (el) el.textContent = total.toFixed(6) + " ETH";
+  };
+};
+
+window.confirmBuyTime = async function(toName, callRateStr, toAddr) {
+  const minsInput = document.getElementById("buy-time-mins");
+  const mins = parseFloat(minsInput?.value) || 0;
+  if (mins <= 0) return;
+  const seconds = Math.floor(mins * 60);
+  const rateWei = BigInt(callRateStr);
+  const totalWei = rateWei * BigInt(seconds);
+  const totalEth = ethers.formatEther(totalWei);
+
+  const btn = document.getElementById("buy-time-confirm");
+  if (btn) { btn.disabled = true; btn.textContent = "Sending..."; }
+
+  try {
+    // Get signer (app wallet or external)
+    let signer;
+    if (myAppWallet?.privateKey) {
+      const provider = new ethers.JsonRpcProvider("https://1rpc.io/eth", 1, { staticNetwork: true });
+      signer = new ethers.Wallet(myAppWallet.privateKey, provider);
+    } else if (window._signer) {
+      signer = window._signer;
+    } else {
+      showToast("Connect a wallet or set up app wallet first", "error");
+      if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
+      return;
+    }
+
+    const tx = await signer.sendTransaction({ to: toAddr, value: totalWei });
+    showToast(`Sent ${totalEth} ETH — confirming...`, "success");
+
+    if (socket) socket.emit("buy-time", { toName, seconds, amount: totalEth, txHash: tx.hash });
+
+    document.getElementById("buy-time-overlay")?.remove();
+    showToast(`Purchased ${mins} min with ${escapeHtml(toName)}!`, "success", 4000);
+    // Refresh profile to show updated credits
+    setTimeout(() => { if (profileTarget) showProfile(profileTarget); }, 1000);
+  } catch (e) {
+    console.warn("Buy time failed:", e);
+    showToast(e.reason || e.message || "Transaction failed", "error");
+    if (btn) { btn.disabled = false; btn.textContent = "Buy"; }
+  }
 };
 
 window.editProfileStatus = function() {
@@ -6310,9 +6508,16 @@ window.showThread = function(postId, context) {
   // Auto-detect context if not provided
   if (!context) {
     const activeScreen = document.querySelector(".screen.active");
-    context = (activeScreen && activeScreen.id === "contacts-screen") ? "feed" : "profile";
+    const isProfile = activeScreen && activeScreen.id === "profile-screen" && document.getElementById("profile-posts-list");
+    context = isProfile ? "profile" : "feed";
   }
   threadContext = context;
+  // Ensure we're on the right screen with the right list element visible
+  if (context === "feed") {
+    showScreen("contacts-screen");
+    const feedTab = document.getElementById("tab-feed");
+    if (feedTab && !feedTab.classList.contains("active")) feedTab.click();
+  }
   if (socket) socket.emit("get-thread", { postId });
 };
 
@@ -6378,10 +6583,11 @@ function renderNotifications(notifications) {
     else if (n.type === "repost") text = `<strong>${escapeHtml(n.fromUser)}</strong> reposted your post`;
     else if (n.type === "tip") text = `<strong>${escapeHtml(n.fromUser)}</strong> tipped you ${escapeHtml(n.preview || "")} 💰`;
     let onclick;
-    if (n.postId) onclick = `showProfile(profileTarget||'${escapeJSAttr(myName)}');showThread('${n.postId}')`;
-    else if (n.type==="dm") onclick = `openDM(null,'${escapeJSAttr(n.fromUser)}',null);document.getElementById('notif-panel').classList.remove('active')`;
-    else if (n.type==="call_request") onclick = `callBackUser('${escapeJSAttr(n.fromUser)}');document.getElementById('notif-panel').classList.remove('active')`;
-    else onclick = `showProfile('${escapeJSAttr(n.fromUser)}')`;
+    const closeNotif = "document.getElementById('notif-panel').classList.remove('active')";
+    if (n.postId) onclick = `${closeNotif};showThread('${n.postId}')`;
+    else if (n.type==="dm") onclick = `${closeNotif};openDM(null,'${escapeJSAttr(n.fromUser)}',null)`;
+    else if (n.type==="call_request") onclick = `${closeNotif};callBackUser('${escapeJSAttr(n.fromUser)}')`;
+    else onclick = `${closeNotif};showProfile('${escapeJSAttr(n.fromUser)}')`;
     return `<div class="notif-item${cls}" onclick="${onclick}">
       <div class="notif-item-text">${text}</div>
       <div class="notif-item-time">${timeAgo(n.createdAt)}</div>
