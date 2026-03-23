@@ -5983,6 +5983,11 @@ function connectSocket() {
 
   // ── Coin launchpad listeners ──────────────────────────────────────────
   socket.on("user-tokens", ({ username, tokens }) => {
+    // Show/hide Coins tab based on whether user has tokens
+    if (profileTarget && username.toLowerCase() === profileTarget.toLowerCase()) {
+      const coinsTab = document.getElementById("profile-tab-coins");
+      if (coinsTab) coinsTab.style.display = tokens?.length > 0 ? "" : "none";
+    }
     // Add coin link to profile name if viewing this user's profile
     if (profileTarget && username.toLowerCase() === profileTarget.toLowerCase() && tokens?.length > 0) {
       const nameEl = document.getElementById("profile-name");
@@ -6768,7 +6773,7 @@ window.previewSellQuote = function() {
 
 async function _fetchTokenBalance() {
   if (!_chartTokenAddress) return;
-  const addr = walletState?.address || window._connectedAddress || myAppWallet?.address || myWalletAddress;
+  const addr = window._connectedAddress || myAppWallet?.address || myWalletAddress;
   if (!addr) return;
   for (let i = 0; i < _READ_RPCS.length; i++) {
     try {
@@ -6798,7 +6803,7 @@ function _doSellPct(pct) {
 }
 
 async function _resolveSigner() {
-  let signer = window._signer || walletState?.signer || null;
+  let signer = window._signer || window._signer || null;
   if (!signer && myAppWallet?.privateKey) {
     signer = new ethers.Wallet(myAppWallet.privateKey, _qProvider());
   } else if (!signer && myAppWallet?.address && !myAppWallet?.privateKey) {
@@ -7221,7 +7226,7 @@ function showProfile(username) {
   const pt = document.getElementById("profile-tab-posts"), rt = document.getElementById("profile-tab-replies"), ct = document.getElementById("profile-tab-coins");
   if (pt) { pt.classList.add("active"); }
   if (rt) { rt.classList.remove("active"); }
-  if (ct) { ct.classList.remove("active"); }
+  if (ct) { ct.classList.remove("active"); ct.style.display = "none"; }
   const coinsList = document.getElementById("profile-coins-list");
   if (coinsList) coinsList.style.display = "none";
   $("#profile-posts-list").style.display = "block";
@@ -8290,7 +8295,7 @@ window.showLaunchToken = function() {
   const existing = document.getElementById("launch-token-overlay");
   if (existing) existing.remove();
   if (!myName) { showToast("Sign in first", "error"); return; }
-  const hasWallet = walletState?.signer || myAppWallet?.privateKey || myAppWallet?.address;
+  const hasWallet = window._signer || myAppWallet?.privateKey || myAppWallet?.address;
   if (!hasWallet) {
     showToast("Connect a wallet first", "error");
     if (typeof showWalletModal === "function") showWalletModal();
@@ -8337,7 +8342,7 @@ window.submitLaunchToken = async function() {
   const signer = await _resolveSigner();
   if (!signer) return;
 
-  const isAppWallet = !(window._signer || walletState?.signer);
+  const isAppWallet = !(window._signer || window._signer);
   btn.disabled = true; btn.style.opacity = "0.5"; btn.textContent = "Preparing...";
   statusEl.style.display = "block"; statusEl.textContent = isAppWallet ? "Sending from app wallet..." : "Computing token address...";
 
@@ -8418,7 +8423,7 @@ window.submitLaunchToken = async function() {
 window.graduateToken = async function(tokenAddress) {
   const signer = await _resolveSigner();
   if (!signer) return;
-  const isAppWallet = !(window._signer || walletState?.signer);
+  const isAppWallet = !(window._signer || window._signer);
   showToast(isAppWallet ? "Sending graduate tx..." : "Confirm in your wallet...", "info", 5000);
   try {
     const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
