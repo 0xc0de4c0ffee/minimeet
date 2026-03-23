@@ -706,6 +706,141 @@ async function dbSetProfile(name, profile) {
   jsonSet("user_profiles", key, JSON.stringify(profile));
 }
 
+// ─── Group chats ─────────────────────────────────────────────────────────────
+
+async function dbCreateGroup(id, name, creator) {
+  if (supabase) {
+    try { await supabase.from("group_chats").insert({ id, name, creator, created_at: new Date().toISOString() }); } catch (e) { console.warn("Group create error:", e.message); }
+    try { await supabase.from("group_members").insert({ group_id: id, user_name: creator, role: "admin", joined_at: new Date().toISOString() }); } catch (e) { console.warn("Group member add error:", e.message); }
+    return;
+  }
+  const groups = jsonGet("group_chats", "_all");
+  let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
+  list.push({ id, name, creator, createdAt: Date.now(), members: [{ userName: creator, role: "admin" }] });
+  jsonSet("group_chats", "_all", JSON.stringify(list));
+}
+
+async function dbGetGroup(groupId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("group_chats").select("*").eq("id", groupId).single();
+      if (data) return { id: data.id, name: data.name, creator: data.creator, avatar: data.avatar || null, createdAt: new Date(data.created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const groups = jsonGet("group_chats", "_all");
+  try { const list = groups ? JSON.parse(groups) : []; return list.find(g => g.id === groupId) || null; } catch { return null; }
+}
+
+async function dbGetGroupMembers(groupId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("group_members").select("user_name, role").eq("group_id", groupId);
+      return (data || []).map(d => ({ userName: d.user_name, role: d.role }));
+    } catch {}
+    return [];
+  }
+  const groups = jsonGet("group_chats", "_all");
+  try { const list = groups ? JSON.parse(groups) : []; const g = list.find(g => g.id === groupId); return g ? g.members : []; } catch { return []; }
+}
+
+async function dbAddGroupMember(groupId, userName, role = "member") {
+  if (supabase) {
+    try { await supabase.from("group_members").upsert({ group_id: groupId, user_name: userName.toLowerCase().trim(), role, joined_at: new Date().toISOString() }); } catch (e) { console.warn("Group member add error:", e.message); }
+    return;
+  }
+  const groups = jsonGet("group_chats", "_all");
+  let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
+  const g = list.find(g => g.id === groupId);
+  if (g) { if (!g.members.find(m => m.userName === userName.toLowerCase().trim())) g.members.push({ userName: userName.toLowerCase().trim(), role }); jsonSet("group_chats", "_all", JSON.stringify(list)); }
+}
+
+async function dbRemoveGroupMember(groupId, userName) {
+  if (supabase) {
+    try { await supabase.from("group_members").delete().eq("group_id", groupId).eq("user_name", userName.toLowerCase().trim()); } catch (e) { console.warn("Group member remove error:", e.message); }
+    return;
+  }
+  const groups = jsonGet("group_chats", "_all");
+  let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
+  const g = list.find(g => g.id === groupId);
+  if (g) { g.members = g.members.filter(m => m.userName !== userName.toLowerCase().trim()); jsonSet("group_chats", "_all", JSON.stringify(list)); }
+}
+
+async function dbGetUserGroups(userName) {
+  const key = userName.toLowerCase().trim();
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("group_members").select("group_id").eq("user_name", key);
+      if (!data || data.length === 0) return [];
+      const groupIds = data.map(d => d.group_id);
+      const { data: groups } = await supabase.from("group_chats").select("*").in("id", groupIds);
+      return (groups || []).map(g => ({ id: g.id, name: g.name, creator: g.creator, avatar: g.avatar || null, createdAt: new Date(g.created_at).getTime() }));
+    } catch {}
+    return [];
+  }
+  const groups = jsonGet("group_chats", "_all");
+  try { const list = groups ? JSON.parse(groups) : []; return list.filter(g => g.members.some(m => m.userName === key)); } catch { return []; }
+}
+
+async function dbSaveGroupMsg(groupId, msg) {
+  if (supabase) {
+    try {
+      const row = { id: msg.id, group_id: groupId, sender: msg.sender, sender_name: msg.senderName, text: msg.text, created_at: new Date(msg.ts).toISOString() };
+      if (msg.image) row.image = msg.image;
+      await supabase.from("group_messages").insert(row);
+    } catch (e) { console.warn("Group msg write error:", e.message); }
+    return;
+  }
+  const stored = jsonGet("group_messages", groupId);
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  msgs.push(msg);
+  if (msgs.length > 200) msgs.splice(0, msgs.length - 200);
+  jsonSet("group_messages", groupId, JSON.stringify(msgs));
+}
+
+async function dbLoadGroupMsgs(groupId, limit = 50, before = null) {
+  if (supabase) {
+    try {
+      let query = supabase.from("group_messages").select("*").eq("group_id", groupId).order("created_at", { ascending: false }).limit(limit);
+      if (before) query = query.lt("created_at", new Date(before).toISOString());
+      const { data } = await query;
+      if (data) return data.reverse().map(d => ({ id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, image: d.image || null, ts: new Date(d.created_at).getTime() }));
+    } catch (e) { console.warn("Group msg read error:", e.message); }
+    return [];
+  }
+  const stored = jsonGet("group_messages", groupId);
+  let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
+  if (before) msgs = msgs.filter(m => m.ts < before);
+  return msgs.slice(-limit);
+}
+
+async function dbDeleteGroup(groupId) {
+  if (supabase) {
+    try {
+      await supabase.from("group_messages").delete().eq("group_id", groupId);
+      await supabase.from("group_members").delete().eq("group_id", groupId);
+      await supabase.from("group_chats").delete().eq("id", groupId);
+    } catch (e) { console.warn("Group delete error:", e.message); }
+    return;
+  }
+  const groups = jsonGet("group_chats", "_all");
+  let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
+  jsonSet("group_chats", "_all", JSON.stringify(list.filter(g => g.id !== groupId)));
+  jsonSet("group_messages", groupId, null);
+}
+
+async function dbGetGroupLastMsg(groupId) {
+  if (supabase) {
+    try {
+      const { data } = await supabase.from("group_messages").select("text, sender_name, created_at").eq("group_id", groupId).order("created_at", { ascending: false }).limit(1);
+      if (data && data[0]) return { text: data[0].text, senderName: data[0].sender_name, ts: new Date(data[0].created_at).getTime() };
+    } catch {}
+    return null;
+  }
+  const stored = jsonGet("group_messages", groupId);
+  try { const msgs = stored ? JSON.parse(stored) : []; return msgs.length > 0 ? msgs[msgs.length - 1] : null; } catch { return null; }
+}
+
 // ─── Posts ───────────────────────────────────────────────────────────────────
 
 async function dbCreatePost(author, text, parentId = null, image = null) {
@@ -2043,7 +2178,7 @@ io.on("connection", (socket) => {
   });
 
   // ── Streaming ────────────────────────────────────────────────────────────
-  socket.on("start-stream", ({ title }) => {
+  socket.on("start-stream", async ({ title, groupId }) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     if (isUserInCall(userId) || isUserStreaming(userId)) { socket.emit("stream-error", { message: "You're already in a call or stream" }); return; }
@@ -2053,11 +2188,30 @@ io.on("connection", (socket) => {
       streamerId: userId, streamerName: userData.name,
       streamerAvatar: userData.avatar || null, streamerXUsername: userData.xUsername || null,
       title: title || `${userData.name}'s stream`, startedAt: Date.now(),
-      viewers: new Set(),
+      viewers: new Set(), groupId: groupId || null,
     });
     socket.emit("stream-started", { streamId });
     broadcastUserList();
-    console.log(`📺 ${userData.name} started streaming: ${title || userData.name + "'s stream"}`);
+    // If group stream, notify all group members
+    if (groupId) {
+      const members = await dbGetGroupMembers(groupId);
+      const group = await dbGetGroup(groupId);
+      const groupName = group?.name || "a group";
+      for (const m of members) {
+        if (m.userName === userData.name.toLowerCase().trim() || m.role === "pending") continue;
+        const notif = await dbCreateNotification(m.userName, "group_stream", userData.name, null, `Live in ${groupName}`);
+        emitNotification(m.userName, notif);
+        // Also emit a direct event so online members get an immediate prompt
+        for (const [uid, d] of onlineUsers) {
+          if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+            const s = getSocketByUserId(uid);
+            if (s) s.emit("group-stream-started", { groupId, streamId, streamerName: userData.name, groupName });
+            break;
+          }
+        }
+      }
+    }
+    console.log(`📺 ${userData.name} started streaming: ${title || userData.name + "'s stream"}${groupId ? " (group: " + groupId + ")" : ""}`);
   });
 
   socket.on("end-stream", ({ streamId }) => {
@@ -2810,6 +2964,220 @@ io.on("connection", (socket) => {
   });
 
   // Poke — lightweight nudge
+  // ── Group chats ──────────────────────────────────────────────────────────
+  socket.on("create-group", async ({ name, inviteNames }) => {
+    if (!rateLimit(socket, "create-group", 3, 60_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    if (!name || typeof name !== "string") return;
+    const groupName = name.trim().slice(0, 50);
+    if (!groupName) return;
+    const groupId = uuidv4().slice(0, 12);
+    await dbCreateGroup(groupId, groupName, userData.name.toLowerCase().trim());
+    // Send invites
+    if (Array.isArray(inviteNames)) {
+      for (const invName of inviteNames.slice(0, 100)) {
+        if (typeof invName !== "string") continue;
+        const targetKey = invName.toLowerCase().trim();
+        if (targetKey === userData.name.toLowerCase().trim()) continue;
+        await dbAddGroupMember(groupId, targetKey, "pending"); // track invite
+        await dbCreateNotification(targetKey, "group_invite", userData.name, groupId, groupName);
+        emitNotification(targetKey, { type: "group_invite", fromUser: userData.name, groupId, groupName, preview: groupName });
+      }
+    }
+    socket.emit("group-created", { groupId, name: groupName });
+  });
+
+  socket.on("accept-group-invite", async ({ groupId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const group = await dbGetGroup(groupId);
+    if (!group) { socket.emit("group-error", { message: "Group not found" }); return; }
+    const members = await dbGetGroupMembers(groupId);
+    const myKey = userData.name.toLowerCase().trim();
+    const existing = members.find(m => m.userName === myKey);
+    if (existing && existing.role !== "pending") { socket.emit("group-error", { message: "Already a member" }); return; }
+    if (!existing) { socket.emit("group-error", { message: "No invite found" }); return; }
+    if (members.filter(m => m.role !== "pending").length >= 100) { socket.emit("group-error", { message: "Group is full" }); return; }
+    // Upgrade from pending to member
+    await dbAddGroupMember(groupId, userData.name, "member");
+    // Notify all members
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("group-member-joined", { groupId, userName: userData.name });
+          break;
+        }
+      }
+    }
+    socket.emit("group-joined", { groupId, name: group.name });
+  });
+
+  socket.on("leave-group", async ({ groupId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    await dbRemoveGroupMember(groupId, userData.name);
+    socket.emit("group-left", { groupId });
+    // Notify members
+    const members = await dbGetGroupMembers(groupId);
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("group-member-left", { groupId, userName: userData.name });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("group-invite", async ({ groupId, userName }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const group = await dbGetGroup(groupId);
+    if (!group) return;
+    const members = await dbGetGroupMembers(groupId);
+    const me = members.find(m => m.userName === userData.name.toLowerCase().trim());
+    if (!me || me.role !== "admin") { socket.emit("group-error", { message: "Only admin can invite" }); return; }
+    if (members.length >= 100) { socket.emit("group-error", { message: "Group is full" }); return; }
+    const targetKey = (userName || "").toLowerCase().trim();
+    const existingMember = members.find(m => m.userName === targetKey);
+    if (existingMember && existingMember.role !== "pending") return; // already member
+    await dbAddGroupMember(groupId, targetKey, "pending"); // track invite
+    await dbCreateNotification(targetKey, "group_invite", userData.name, groupId, group.name);
+    emitNotification(targetKey, { type: "group_invite", fromUser: userData.name, groupId, groupName: group.name, preview: group.name });
+  });
+
+  socket.on("group-remove-member", async ({ groupId, userName }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGroupMembers(groupId);
+    const me = members.find(m => m.userName === userData.name.toLowerCase().trim());
+    if (!me || me.role !== "admin") { socket.emit("group-error", { message: "Only admin can remove members" }); return; }
+    const targetKey = (userName || "").toLowerCase().trim();
+    if (targetKey === userData.name.toLowerCase().trim()) return; // can't remove self
+    await dbRemoveGroupMember(groupId, targetKey);
+    // Notify removed user
+    for (const [uid, d] of onlineUsers) {
+      if (d.name.toLowerCase() === targetKey && !d.disconnectedAt) {
+        const s = getSocketByUserId(uid);
+        if (s) s.emit("group-removed", { groupId });
+        break;
+      }
+    }
+  });
+
+  socket.on("delete-group", async ({ groupId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const group = await dbGetGroup(groupId);
+    if (!group || group.creator !== userData.name.toLowerCase().trim()) { socket.emit("group-error", { message: "Only creator can delete" }); return; }
+    const members = await dbGetGroupMembers(groupId);
+    await dbDeleteGroup(groupId);
+    // Notify all members
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("group-deleted", { groupId });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("get-my-groups", async () => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const groups = await dbGetUserGroups(userData.name);
+    // Enrich with last message and member count
+    const enriched = await Promise.all(groups.map(async (g) => {
+      const [members, lastMsg] = await Promise.all([dbGetGroupMembers(g.id), dbGetGroupLastMsg(g.id)]);
+      return { ...g, memberCount: members.length, lastMessage: lastMsg?.text?.slice(0, 50) || null, lastSender: lastMsg?.senderName || null, lastTime: lastMsg?.ts || g.createdAt };
+    }));
+    socket.emit("my-groups", enriched.sort((a, b) => (b.lastTime || 0) - (a.lastTime || 0)));
+  });
+
+  socket.on("get-group-info", async ({ groupId }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGroupMembers(groupId);
+    if (!members.find(m => m.userName === userData.name.toLowerCase().trim() && m.role !== "pending")) { socket.emit("group-error", { message: "Not a member" }); return; }
+    const group = await dbGetGroup(groupId);
+    if (!group) return;
+    // Enrich members with avatars
+    const enrichedMembers = await Promise.all(members.map(async (m) => {
+      const avatar = await dbGetAvatar(m.userName);
+      return { ...m, avatar: avatar || null };
+    }));
+    socket.emit("group-info", { ...group, members: enrichedMembers });
+  });
+
+  socket.on("group-chat", async ({ groupId, text, image }) => {
+    if (!rateLimit(socket, "group-chat", 10, 10_000)) return;
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGroupMembers(groupId);
+    if (!members.find(m => m.userName === userData.name.toLowerCase().trim() && m.role !== "pending")) return;
+    const trimmed = (text || "").trim().slice(0, 500);
+    const safeImage = (image && typeof image === "string" && image.startsWith("data:image/") && image.length <= 500_000) ? image : null;
+    if (!trimmed && !safeImage) return;
+    const msg = { id: uuidv4().slice(0, 10), sender: userData.name.toLowerCase().trim(), senderName: userData.name, text: trimmed, image: safeImage, ts: Date.now() };
+    dbSaveGroupMsg(groupId, msg);
+    // Broadcast to all online members
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("group-chat", { groupId, ...msg, avatar: userData.avatar || null });
+          break;
+        }
+      }
+    }
+  });
+
+  socket.on("group-history", async ({ groupId, limit, before }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const members = await dbGetGroupMembers(groupId);
+    if (!members.find(m => m.userName === userData.name.toLowerCase().trim() && m.role !== "pending")) return;
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 100);
+    const safeBefore = typeof before === "number" ? before : null;
+    const messages = await dbLoadGroupMsgs(groupId, safeLimit, safeBefore);
+    socket.emit("group-history", { groupId, messages, hasMore: messages.length === safeLimit });
+  });
+
+  socket.on("rename-group", async ({ groupId, name }) => {
+    const userId = socket.userId; if (!userId) return;
+    const userData = onlineUsers.get(userId); if (!userData) return;
+    const group = await dbGetGroup(groupId);
+    if (!group) return;
+    const members = await dbGetGroupMembers(groupId);
+    const me = members.find(m => m.userName === userData.name.toLowerCase().trim());
+    if (!me || me.role !== "admin") { socket.emit("group-error", { message: "Only admin can rename" }); return; }
+    const newName = (name || "").trim().slice(0, 50);
+    if (!newName) return;
+    if (supabase) {
+      try { await supabase.from("group_chats").update({ name: newName }).eq("id", groupId); } catch {}
+    } else {
+      const groups = jsonGet("group_chats", "_all");
+      let list; try { list = groups ? JSON.parse(groups) : []; } catch { list = []; }
+      const g = list.find(g => g.id === groupId);
+      if (g) { g.name = newName; jsonSet("group_chats", "_all", JSON.stringify(list)); }
+    }
+    // Notify all members
+    for (const m of members) {
+      for (const [uid, d] of onlineUsers) {
+        if (d.name.toLowerCase() === m.userName && !d.disconnectedAt) {
+          const s = getSocketByUserId(uid);
+          if (s) s.emit("group-renamed", { groupId, name: newName });
+          break;
+        }
+      }
+    }
+  });
+
   socket.on("poke", async ({ toUserId }) => {
     if (!rateLimit(socket, "poke", 3, 30_000)) return; // 3 pokes per 30s
     const userId = socket.userId; if (!userId) return;

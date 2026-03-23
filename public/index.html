@@ -3663,7 +3663,7 @@ function closePeerConnection() {
 
 // ── Streaming ────────────────────────────────────────────────────────────
 
-async function startStream() {
+async function startStream(groupId) {
   try {
     streamLocalStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: audioConstraints });
     $("#stream-local-video").srcObject = streamLocalStream;
@@ -3677,12 +3677,11 @@ async function startStream() {
   currentStreamId = null;
   streamPeerConnections.clear();
   streamViewerCount = 0;
-  // Hide streamer info (that's for viewers)
   $("#stream-streamer-info").style.display = "none";
-  // Show mute/video controls for streamer
   $("#stream-mute-btn").style.display = "";
   $("#stream-video-btn").style.display = "";
-  socket.emit("start-stream", { title: `${myName}'s stream` });
+  const title = groupId ? `${myName}'s group stream` : `${myName}'s stream`;
+  socket.emit("start-stream", { title, groupId: groupId || undefined });
   showScreen("stream-screen");
   updateStreamViewerCount(0);
   return true;
@@ -3988,6 +3987,7 @@ let dmReadCursors = new Map(); // peerName (lowercase) -> timestamp of their las
 let callChatUnread = 0;
 
 function openDM(userId, name, avatar) {
+  activeGroupId = null; // clear group context
   dmTargetUserId = userId;
   dmTargetName = name;
   // Setup header
@@ -4026,6 +4026,7 @@ function openDM(userId, name, avatar) {
 function closeDM() {
   $("#dm-overlay").classList.remove("active");
   dmTargetUserId = null;
+  activeGroupId = null;
 }
 
 function loadOlderDMs() {
@@ -4068,6 +4069,14 @@ async function sendDM() {
   const input = $("#dm-input");
   const text = input.value.trim();
   const image = pendingDMImage;
+  // Group chat: route to group if active
+  if (activeGroupId) {
+    if (!text && !image) return;
+    input.value = "";
+    clearDMImage();
+    socket.emit("group-chat", { groupId: activeGroupId, text, image });
+    return;
+  }
   if ((!text && !image) || !socket || (!dmTargetUserId && !dmTargetName)) return;
   input.value = "";
   clearDMImage();
@@ -4806,7 +4815,7 @@ function connectSocket() {
     autoMeetCooldownHours = cooldownHours || 24;
     updateAutoMeetUI();
     // Fetch all initial data in one request
-    if (socket) socket.emit("init-data");
+    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); }
     if (reconnected) showToast("Reconnected", "success", 1500);
     // Re-sync presence status after reconnect (server defaults to "online")
     if (manualStatus && myPresenceStatus !== "online" && socket) {
@@ -5667,9 +5676,145 @@ function connectSocket() {
   });
 
   socket.on("call-rate-set", ({ callRate }) => {
-    // Refresh own profile if viewing it
     if (profileTarget && profileTarget.toLowerCase() === myName?.toLowerCase()) showProfile(profileTarget);
   });
+
+  // ── Group chat events ──────────────────────────────────────────────────
+  socket.on("group-created", ({ groupId, name }) => {
+    showToast(`Group "${name}" created`, "success");
+    if (socket) socket.emit("get-my-groups");
+  });
+
+  socket.on("group-joined", ({ groupId, name }) => {
+    showToast(`Joined "${name}"`, "success");
+    if (socket) socket.emit("get-my-groups");
+  });
+
+  socket.on("group-left", ({ groupId }) => {
+    myGroups = myGroups.filter(g => g.id !== groupId);
+    groupMessages.delete(groupId);
+    if (activeGroupId === groupId) closeDM();
+  });
+
+  socket.on("group-removed", ({ groupId }) => {
+    showToast("You were removed from a group", "error");
+    myGroups = myGroups.filter(g => g.id !== groupId);
+    groupMessages.delete(groupId);
+    if (activeGroupId === groupId) closeDM();
+  });
+
+  socket.on("group-deleted", ({ groupId }) => {
+    showToast("Group was deleted", "error");
+    myGroups = myGroups.filter(g => g.id !== groupId);
+    groupMessages.delete(groupId);
+    if (activeGroupId === groupId) closeDM();
+  });
+
+  socket.on("group-renamed", ({ groupId, name }) => {
+    const g = myGroups.find(g => g.id === groupId);
+    if (g) g.name = name;
+    if (activeGroupId === groupId) $("#dm-header-name").textContent = name;
+  });
+
+  socket.on("group-member-joined", ({ groupId, userName }) => {
+    if (activeGroupId === groupId) {
+      appendGroupMsg({ id: Date.now().toString(36), sender: "", senderName: userName, text: `${userName} joined the group`, ts: Date.now() }, null);
+    }
+  });
+
+  socket.on("group-member-left", ({ groupId, userName }) => {
+    if (activeGroupId === groupId) {
+      appendGroupMsg({ id: Date.now().toString(36), sender: "", senderName: userName, text: `${userName} left the group`, ts: Date.now() }, null);
+    }
+  });
+
+  socket.on("my-groups", (groups) => {
+    myGroups = groups || [];
+  });
+
+  socket.on("group-chat", ({ groupId, ...msg }) => {
+    if (!groupMessages.has(groupId)) groupMessages.set(groupId, []);
+    const msgs = groupMessages.get(groupId);
+    if (!msgs.find(m => m.id === msg.id)) msgs.push(msg);
+    if (activeGroupId === groupId) appendGroupMsg(msg, null);
+    // Update last message in group list
+    const g = myGroups.find(g => g.id === groupId);
+    if (g) { g.lastMessage = (msg.text || "").slice(0, 50); g.lastSender = msg.senderName; g.lastTime = msg.ts; }
+  });
+
+  socket.on("group-history", ({ groupId, messages, hasMore }) => {
+    if (!messages || messages.length === 0) {
+      if (activeGroupId === groupId) {
+        const container = $("#dm-messages");
+        if (container.querySelector(".dm-empty")) container.innerHTML = '<div class="dm-empty">Start the conversation...</div>';
+      }
+      return;
+    }
+    const existing = groupMessages.get(groupId) || [];
+    const seen = new Set(existing.map(m => m.id));
+    const merged = [...messages.filter(m => !seen.has(m.id)), ...existing].sort((a, b) => a.ts - b.ts);
+    groupMessages.set(groupId, merged);
+    if (activeGroupId === groupId) {
+      const container = $("#dm-messages");
+      container.innerHTML = "";
+      merged.forEach(m => appendGroupMsg(m, container));
+      container.scrollTop = container.scrollHeight;
+    }
+  });
+
+  socket.on("group-info", (info) => {
+    // Show group info overlay
+    const existing = document.getElementById("group-info-overlay");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "group-info-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:250;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;";
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    const isAdmin = info.creator === myName?.toLowerCase().trim();
+    const card = document.createElement("div");
+    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;width:320px;max-width:90vw;max-height:60vh;overflow-y:auto;";
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:600;">${escapeHtml(info.name)}</div>
+        <button onclick="this.closest('#group-info-overlay').remove()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1;">&times;</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;">${info.members.length} member${info.members.length !== 1 ? "s" : ""} · Created by ${escapeHtml(info.creator)}</div>
+      ${isAdmin ? `<div style="display:flex;gap:6px;margin-bottom:12px;">
+        <button onclick="renameGroup('${info.id}')" style="flex:1;padding:6px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">Rename</button>
+        <button onclick="inviteToGroup('${info.id}')" style="flex:1;padding:6px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;cursor:pointer;">Invite</button>
+        <button onclick="goLiveInGroup('${info.id}');this.closest('#group-info-overlay').remove()" style="flex:1;padding:6px;background:none;border:1px solid rgba(74,222,128,0.3);border-radius:6px;color:var(--green);font-size:11px;cursor:pointer;">Go Live</button>
+        <button onclick="if(confirm('Delete this group?')){socket.emit('delete-group',{groupId:'${info.id}'});this.closest('#group-info-overlay').remove()}" style="flex:1;padding:6px;background:none;border:1px solid rgba(232,69,60,0.3);border-radius:6px;color:var(--red);font-size:11px;cursor:pointer;">Delete</button>
+      </div>` : ""}
+      ${info.members.map(m => {
+        const color = getColor(m.userName);
+        const bg = m.avatar ? `background:${safeCssUrl(m.avatar)} center/cover` : `background:${color}`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 4px;">
+          <div style="width:28px;height:28px;border-radius:50%;${bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;background-size:cover;background-position:center;"><span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:#fff">${m.avatar ? "" : getInitials(m.userName)}</span></div>
+          <div style="flex:1;">
+            <span style="font-size:12px;cursor:pointer;" onclick="this.closest('#group-info-overlay').remove();showProfile('${escapeJSAttr(m.userName)}')">${escapeHtml(m.userName)}</span>
+            ${m.role === "admin" ? '<span style="font-size:9px;color:var(--amber);margin-left:4px;">admin</span>' : ""}
+          </div>
+          ${isAdmin && m.userName !== info.creator ? `<button onclick="socket.emit('group-remove-member',{groupId:'${info.id}',userName:'${escapeJSAttr(m.userName)}'});this.closest('#group-info-overlay').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:10px;">remove</button>` : ""}
+        </div>`;
+      }).join("")}
+      ${!isAdmin ? `<button onclick="if(confirm('Leave this group?')){socket.emit('leave-group',{groupId:'${info.id}'});this.closest('#group-info-overlay').remove()}" style="width:100%;margin-top:8px;padding:8px;background:none;border:1px solid rgba(232,69,60,0.3);border-radius:6px;color:var(--red);font-size:11px;cursor:pointer;">Leave Group</button>` : ""}
+    `;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+  });
+
+  socket.on("group-stream-started", ({ groupId, streamId, streamerName, groupName }) => {
+    showToast(`${streamerName} is live in ${groupName}!`, "success", 5000);
+    // Auto-join option — show a toast with a join link
+    const toastEl = document.querySelector(".toast.visible");
+    if (toastEl) {
+      toastEl.style.cursor = "pointer";
+      toastEl.onclick = () => { joinStream(streamId); toastEl.classList.remove("visible"); };
+      toastEl.innerHTML += ' <span style="text-decoration:underline;">Join</span>';
+    }
+  });
+
+  socket.on("group-error", ({ message }) => { showToast(message, "error"); });
 
   // Bundled init response — processes contacts, chat, notifications, score, pairs, feed in one go
   socket.on("init-data", ({ contacts, chatHistory, notifications, unreadCount, socialScore, pairs, globalFeed }) => {
@@ -6651,10 +6796,13 @@ function renderNotifications(notifications) {
     else if (n.type === "follow") text = `<strong>${escapeHtml(n.fromUser)}</strong> followed you`;
     else if (n.type === "repost") text = `<strong>${escapeHtml(n.fromUser)}</strong> reposted your post`;
     else if (n.type === "mention") text = `<strong>${escapeHtml(n.fromUser)}</strong> mentioned you: ${escapeHtml(n.preview || "")}`;
+    else if (n.type === "group_invite") text = `<strong>${escapeHtml(n.fromUser)}</strong> invited you to <strong>${escapeHtml(n.preview || "a group")}</strong>`;
+    else if (n.type === "group_stream") text = `<strong>${escapeHtml(n.fromUser)}</strong> is live: ${escapeHtml(n.preview || "")}`;
     else if (n.type === "tip") text = `<strong>${escapeHtml(n.fromUser)}</strong> tipped you ${escapeHtml(n.preview || "")} 💰`;
     let onclick;
     const closeNotif = "document.getElementById('notif-panel').classList.remove('active')";
-    if (n.postId) onclick = `${closeNotif};showThread('${n.postId}')`;
+    if (n.type==="group_invite" && n.postId) onclick = `${closeNotif};acceptGroupInvite('${n.postId}')`;
+    else if (n.postId) onclick = `${closeNotif};showThread('${n.postId}')`;
     else if (n.type==="dm") onclick = `${closeNotif};openDM(null,'${escapeJSAttr(n.fromUser)}',null)`;
     else if (n.type==="call_request") onclick = `${closeNotif};callBackUser('${escapeJSAttr(n.fromUser)}')`;
     else onclick = `${closeNotif};showProfile('${escapeJSAttr(n.fromUser)}')`;
@@ -6722,31 +6870,140 @@ async function loadDMConversations() {
   } catch {}
 }
 
+let myGroups = []; // { id, name, memberCount, lastMessage, lastTime, ... }
+let activeGroupId = null; // currently open group chat
+let groupMessages = new Map(); // groupId -> [messages]
+
 function renderMessages() {
   const panel = document.getElementById("msgs-panel");
   if (!panel) return;
-  if (dmConversations.length === 0) {
-    panel.innerHTML = '<div style="padding:20px;text-align:center;color:#555;font-size:12px;">No messages yet</div>';
-    return;
-  }
-  panel.innerHTML = dmConversations.map(c => {
-    const color = getColor(c.peerName);
-    const initials = getInitials(c.peerName);
-    const cached = getCachedMeta(c.peerName.toLowerCase());
-    const bg = cached?.avatar ? `background-image:${safeCssUrl(cached.avatar)}` : `background:${color}`;
-    const inner = cached?.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
-    const displayName = /^0x[0-9a-f]{40}$/.test(c.peerName) ? c.peerName.slice(0,6) + "..." + c.peerName.slice(-4) : c.peerName;
-    return `<div class="notif-item" onclick="directoryOpenDM('${escapeJSAttr(c.peerName)}');document.getElementById('msgs-panel').classList.remove('active')">
-      <div style="display:flex;align-items:center;gap:8px;">
-        <div class="directory-item-pfp" style="${bg};width:28px;height:28px;border-radius:50%;flex-shrink:0;">${inner}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:12px;font-weight:600;">${escapeHtml(displayName)}</div>
-          <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.lastMessage || "")} · ${timeAgo(c.lastTime)}</div>
+  let html = "";
+  // Create group button
+  html += `<div style="padding:6px 8px;border-bottom:1px solid var(--border);"><button onclick="showCreateGroup();document.getElementById('msgs-panel').classList.remove('active')" style="width:100%;padding:6px;background:none;border:1px dashed rgba(255,255,255,0.15);border-radius:6px;color:var(--text-muted);font-size:11px;font-family:var(--font-mono);cursor:pointer;">+ New Group</button></div>`;
+  // Groups
+  if (myGroups.length > 0) {
+    html += '<div style="font-size:9px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Groups</div>';
+    html += myGroups.map(g => {
+      const color = getColor(g.name);
+      return `<div class="notif-item" onclick="openGroupChat('${g.id}');document.getElementById('msgs-panel').classList.remove('active')">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:700;color:#fff;">${g.memberCount || ""}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;">${escapeHtml(g.name)}</div>
+            <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.lastSender ? escapeHtml(g.lastSender) + ": " : ""}${escapeHtml(g.lastMessage || "No messages")} · ${g.lastTime ? timeAgo(g.lastTime) : "new"}</div>
+          </div>
         </div>
-      </div>
-    </div>`;
-  }).join("");
+      </div>`;
+    }).join("");
+  }
+  // DM conversations
+  if (dmConversations.length > 0) {
+    html += '<div style="font-size:9px;color:#555;font-family:var(--font-mono);padding:6px 8px;text-transform:uppercase;letter-spacing:0.05em;">Direct Messages</div>';
+    html += dmConversations.map(c => {
+      const color = getColor(c.peerName);
+      const initials = getInitials(c.peerName);
+      const cached = getCachedMeta(c.peerName.toLowerCase());
+      const bg = cached?.avatar ? `background-image:${safeCssUrl(cached.avatar)}` : `background:${color}`;
+      const inner = cached?.avatar ? "" : `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#fff">${initials}</span>`;
+      const displayName = /^0x[0-9a-f]{40}$/.test(c.peerName) ? c.peerName.slice(0,6) + "..." + c.peerName.slice(-4) : c.peerName;
+      return `<div class="notif-item" onclick="directoryOpenDM('${escapeJSAttr(c.peerName)}');document.getElementById('msgs-panel').classList.remove('active')">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="directory-item-pfp" style="${bg};width:28px;height:28px;border-radius:50%;flex-shrink:0;">${inner}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;">${escapeHtml(displayName)}</div>
+            <div style="font-size:11px;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.lastMessage || "")} · ${timeAgo(c.lastTime)}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+  }
+  if (!html || (myGroups.length === 0 && dmConversations.length === 0)) {
+    html += '<div style="padding:20px;text-align:center;color:#555;font-size:12px;">No messages yet</div>';
+  }
+  panel.innerHTML = html;
 }
+
+window.showCreateGroup = function() {
+  const name = prompt("Group name:");
+  if (!name || !name.trim()) return;
+  const invites = prompt("Invite users (comma-separated names or @handles, or leave empty):");
+  const inviteNames = invites ? invites.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean) : [];
+  if (socket) socket.emit("create-group", { name: name.trim(), inviteNames });
+};
+
+window.acceptGroupInvite = function(groupId) {
+  if (socket) socket.emit("accept-group-invite", { groupId });
+};
+
+window.openGroupChat = function(groupId) {
+  activeGroupId = groupId;
+  const group = myGroups.find(g => g.id === groupId);
+  // Reuse the DM overlay for group chat
+  const pfp = $("#dm-header-pfp");
+  const color = getColor(group?.name || "Group");
+  pfp.style.background = color;
+  pfp.innerHTML = `<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#fff">${(group?.memberCount || "G")}</span>`;
+  $("#dm-header-name").textContent = group?.name || "Group";
+  // Add group info button to header
+  const headerName = $("#dm-header-name");
+  headerName.style.cursor = "pointer";
+  headerName.onclick = () => { if (socket) socket.emit("get-group-info", { groupId }); };
+  const container = $("#dm-messages");
+  const msgs = groupMessages.get(groupId) || [];
+  container.innerHTML = msgs.length === 0 ? '<div class="dm-empty">Loading...</div>' : "";
+  msgs.forEach(m => appendGroupMsg(m, container));
+  container.scrollTop = container.scrollHeight;
+  // Load history
+  if (socket) socket.emit("group-history", { groupId });
+  // Override send to use group chat
+  dmTargetUserId = null;
+  dmTargetName = null;
+  $("#dm-overlay").classList.add("active");
+  $("#dm-input").focus();
+};
+
+function appendGroupMsg(msg, container) {
+  if (!container) container = $("#dm-messages");
+  const empty = container.querySelector(".dm-empty");
+  if (empty) empty.remove();
+  const el = document.createElement("div");
+  const isSent = msg.sender === myName?.toLowerCase().trim();
+  el.className = `dm-msg ${isSent ? "sent" : "received"}`;
+  let content = "";
+  if (!isSent) content += `<div style="font-size:10px;color:var(--text-muted);margin-bottom:2px;font-weight:600;">${escapeHtml(msg.senderName || msg.sender)}</div>`;
+  if (msg.text) content += `<div>${linkify(msg.text)}</div>`;
+  if (msg.image) content += `<img class="dm-msg-img" src="${escapeHtml(msg.image)}" alt="" onclick="window.open(this.src,'_blank')" />`;
+  content += `<div class="dm-msg-time">${formatChatTime(msg.ts)}</div>`;
+  el.innerHTML = content;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+window.closeGroupChat = function() { activeGroupId = null; };
+
+window.goLiveInGroup = function(groupId) {
+  closeDM();
+  startStream(groupId);
+};
+
+window.renameGroup = function(groupId) {
+  const name = prompt("New group name:");
+  if (!name || !name.trim()) return;
+  if (socket) socket.emit("rename-group", { groupId, name: name.trim() });
+  document.getElementById("group-info-overlay")?.remove();
+};
+
+window.inviteToGroup = function(groupId) {
+  const names = prompt("Invite users (comma-separated names or @handles):");
+  if (!names) return;
+  const list = names.split(",").map(s => s.trim().replace(/^@/, "")).filter(Boolean);
+  for (const userName of list) {
+    if (socket) socket.emit("group-invite", { groupId, userName });
+  }
+  showToast(`Invited ${list.length} user${list.length !== 1 ? "s" : ""}`, "success");
+  document.getElementById("group-info-overlay")?.remove();
+};
+
 
 function renderDirectory(filter = "") {
   const list = document.getElementById("directory-list");
