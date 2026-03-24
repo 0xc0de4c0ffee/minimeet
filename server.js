@@ -4451,22 +4451,34 @@ io.on("connection", (socket) => {
 
   socket.on("get-token-holders", async ({ tokenAddress }) => {
     if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
-    // Get unique traders from DB, then batch balanceOf via multicall
+    // Build candidate list from DB trades + gated room members + creator
     const traders = await dbGetTokenTraders(tokenAddress);
-    if (traders.length === 0) { socket.emit("token-holders", { tokenAddress, holders: [] }); return; }
+    const walletMap = new Map(); // address → name
+    for (const t of traders) walletMap.set(t.trader.toLowerCase(), t.traderName);
+    // Add gated room members (they hold tokens)
+    const token = await dbGetLaunchedToken(tokenAddress);
+    if (token?.roomId) {
+      const members = await dbGetGatedRoomMembers(token.roomId);
+      for (const m of members) {
+        const addr = (m.walletAddress || "").toLowerCase();
+        if (addr && /^0x[0-9a-f]{40}$/.test(addr) && !walletMap.has(addr)) walletMap.set(addr, m.userName);
+      }
+    }
+    if (walletMap.size === 0) { socket.emit("token-holders", { tokenAddress, holders: [] }); return; }
+    const candidates = [...walletMap.entries()].map(([addr, name]) => ({ trader: addr, traderName: name }));
     for (const rpc of _RPCS) {
       try {
         const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
-        const calls = traders.map(t => ({
+        const calls = candidates.map(t => ({
           target: tokenAddress, allowFailure: true,
           callData: _erc20BalIface.encodeFunctionData("balanceOf", [t.trader])
         }));
         const results = await mc.aggregate3(calls);
         const holders = [];
-        for (let i = 0; i < traders.length; i++) {
+        for (let i = 0; i < candidates.length; i++) {
           const balance = results[i].success ? _erc20BalIface.decodeFunctionResult("balanceOf", results[i].returnData)[0] : 0n;
           if (balance > 0n) {
-            holders.push({ address: traders[i].trader, name: traders[i].traderName, balance: balance.toString() });
+            holders.push({ address: candidates[i].trader, name: candidates[i].traderName, balance: balance.toString() });
           }
         }
         holders.sort((a, b) => (BigInt(b.balance) > BigInt(a.balance) ? 1 : -1));
