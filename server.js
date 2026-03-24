@@ -973,6 +973,32 @@ function _rpcFail(rpc) { _providerErrors[rpc] = (_providerErrors[rpc] || 0) + 1;
 // All verified no-API-key public Ethereum RPCs
 const _RPCS = [TOKEN_RPC, "https://ethereum.publicnode.com", "https://eth.drpc.org", "https://eth.merkle.io", "https://eth.llamarpc.com"];
 
+// ── Chainlink ETH/USD price feed ────────────────────────────────────────────
+const CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const _chainlinkIface = new ethers.Interface(["function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)"]);
+let _ethUsdPrice = null; // cents: e.g. 350000 = $3500.00
+let _ethUsdUpdatedAt = 0;
+
+async function fetchEthUsdPrice() {
+  for (const rpc of _RPCS) {
+    try {
+      const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
+      const res = await mc.aggregate3([{ target: CHAINLINK_ETH_USD, allowFailure: true, callData: _chainlinkIface.encodeFunctionData("latestRoundData") }]);
+      if (res[0].success) {
+        const decoded = _chainlinkIface.decodeFunctionResult("latestRoundData", res[0].returnData);
+        _ethUsdPrice = Number(decoded.answer) / 1e8; // 8 decimals
+        _ethUsdUpdatedAt = Date.now();
+        _rpcOk(rpc);
+        return _ethUsdPrice;
+      }
+    } catch (e) { _rpcFail(rpc); }
+  }
+  return _ethUsdPrice; // return stale if all fail
+}
+// Refresh every 60s
+fetchEthUsdPrice();
+setInterval(fetchEthUsdPrice, 60_000);
+
 function _decodeCurve(data) {
   const c = _saleIface.decodeFunctionResult("curves", data);
   return {
@@ -4245,10 +4271,14 @@ io.on("connection", (socket) => {
     socket.emit("user-tokens", { username, tokens });
   });
 
+  socket.on("get-eth-price", () => {
+    if (_ethUsdPrice) socket.emit("eth-price", { usd: _ethUsdPrice, updatedAt: _ethUsdUpdatedAt });
+  });
+
   socket.on("get-token-chart", async ({ tokenAddress }) => {
     if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
     const data = await getTokenChartData(tokenAddress, 500);
-    socket.emit("token-chart", { tokenAddress, ...data });
+    socket.emit("token-chart", { tokenAddress, ...data, ethUsd: _ethUsdPrice });
   });
 
   socket.on("get-token-info", async ({ tokenAddress }) => {

@@ -2197,6 +2197,7 @@
         </div>
         <div class="my-stats" id="my-stats"></div>
         <span class="visitor-count" id="visitor-count" title="Total visitors"></span>
+        <span id="eth-price-tag" style="font-family:var(--font-mono);font-size:10px;color:#555;cursor:pointer;display:none;" onclick="showExplore()" title="ETH/USD via Chainlink"></span>
       </div>
     </div>
 
@@ -5087,7 +5088,7 @@ function connectSocket() {
     autoMeetCooldownHours = cooldownHours || 24;
     updateAutoMeetUI();
     // Fetch all initial data in one request
-    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); socket.emit("get-my-gated-rooms"); }
+    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); socket.emit("get-my-gated-rooms"); socket.emit("get-eth-price"); }
     if (reconnected) showToast("Reconnected", "success", 1500);
     // Re-sync presence status after reconnect (server defaults to "online")
     if (manualStatus && myPresenceStatus !== "online" && socket) {
@@ -6193,7 +6194,16 @@ function connectSocket() {
     }
   });
 
+  socket.on("eth-price", ({ usd }) => {
+    if (usd) {
+      window._ethUsd = usd;
+      const el = document.getElementById("eth-price-tag");
+      if (el) { el.textContent = "ETH $" + usd.toLocaleString(undefined, { maximumFractionDigits: 0 }); el.style.display = ""; }
+    }
+  });
+
   socket.on("token-chart", (data) => {
+    if (data.ethUsd) window._ethUsd = data.ethUsd;
     // Update mini chart if visible on profile
     const miniCanvas = document.querySelector(`.coin-mini-chart[data-token="${data.tokenAddress}"]`);
     if (miniCanvas && data.observations) drawMiniChart(miniCanvas, data.observations);
@@ -6795,7 +6805,7 @@ window.showTokenChart = function(tokenAddress) {
     </div>
     <div id="chart-token-info" style="font-size:11px;color:var(--text-muted);margin-bottom:8px;"></div>
     <div id="chart-price-header" style="margin-bottom:10px;display:flex;align-items:baseline;"></div>
-    <canvas id="token-chart-canvas" width="440" height="200" style="width:100%;height:200px;border-radius:6px;background:var(--surface-hover);margin-bottom:12px;"></canvas>
+    <canvas id="token-chart-canvas" style="width:100%;height:200px;border-radius:6px;background:var(--surface-hover);margin-bottom:12px;"></canvas>
     <div id="chart-curve-stats" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;"></div>
     <div id="chart-earnings" style="display:none;margin-top:8px;padding:8px;background:var(--surface-hover);border-radius:6px;font-size:11px;"></div>
     <div id="chart-graduate" style="display:none;margin-top:12px;"></div>
@@ -7250,12 +7260,6 @@ window.executeSell = async function() {
       // Marginal price overestimates proceeds (curve integral gives less). Apply 5% haircut before slippage.
       minProceeds = net * 95n / 100n * BigInt(10000 - _slippageBps) / 10000n;
     } catch (e) { if (e.message?.includes("graduated")) { showToast(e.message, "info"); btn.disabled = false; btn.textContent = "Sell"; statusEl.style.display = "none"; return; } }
-    // Approve
-    btn.textContent = "Approving...";
-    const tokenWithSigner = tokenContract.connect(signer);
-    const approveTx = await tokenWithSigner.approve(CURVE_SALE_ADDRESS, amount);
-    await approveTx.wait();
-    // Sell
     btn.textContent = "Selling...";
     const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
     const calldata = iface.encodeFunctionData("sell", [_chartTokenAddress, amount, minProceeds, _deadline()]);
@@ -7399,19 +7403,28 @@ function renderActivityList(trades) {
 function handleTokenChart(data) {
   const canvas = document.getElementById("token-chart-canvas");
   if (!canvas || !data.observations) return;
+
+  // Match canvas resolution to actual display size for crisp rendering
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const cssW = rect.width || 440, cssH = rect.height || 200;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
   const ctx = canvas.getContext("2d");
-  const w = canvas.width, h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
+  ctx.scale(dpr, dpr);
+  // All drawing now uses CSS pixel coordinates
+  const w = cssW, h = cssH;
+
   const obs = data.observations;
   if (obs.length < 2) {
     ctx.fillStyle = "#666";
     ctx.font = "12px monospace";
     ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(obs.length === 0 ? "No trades yet" : "Waiting for more trades...", w / 2, h / 2 - 8);
     ctx.fillStyle = "#444";
     ctx.font = "10px monospace";
     ctx.fillText(obs.length === 0 ? "Be the first to buy" : "Chart appears after 2 trades", w / 2, h / 2 + 10);
-    // Draw faint placeholder curve
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
@@ -7426,56 +7439,58 @@ function handleTokenChart(data) {
     ctx.setLineDash([]);
     return;
   }
-  // Layout: price area on top, volume area on bottom (separated)
-  const LEFT = 40, RIGHT = 10, TOP = 10, BOTTOM = 18;
-  const VOL_H = Math.floor(h * 0.2); // 20% for volume
-  const PRICE_BOTTOM = h - BOTTOM - VOL_H - 4; // 4px gap between price and volume
+
+  // Responsive layout — proportional margins
+  const LEFT = Math.max(36, w * 0.09);
+  const RIGHT = 8;
+  const TOP = 8;
+  const BOTTOM = 16;
+  const VOL_H = Math.round(h * 0.18);
+  const GAP = 3;
+  const PRICE_BOTTOM = h - BOTTOM - VOL_H - GAP;
   const priceH = PRICE_BOTTOM - TOP;
-  const volTop = h - BOTTOM - VOL_H;
+  const fontSize = Math.max(7, Math.min(9, w * 0.022));
 
   const prices = obs.map(o => Number(BigInt(o.price)) / 1e18);
   const rawMin = Math.min(...prices), rawMax = Math.max(...prices);
-  // Add 5% padding so spikes don't pin to edges
   const pad = (rawMax - rawMin) * 0.05 || rawMax * 0.05 || 1;
   const min = rawMin - pad, max = rawMax + pad;
   const range = max - min;
 
-  // Helper: map price to Y in price area
   const priceY = (p) => TOP + priceH - ((p - min) / range) * priceH;
-  // Helper: map index to X
   const idxX = (i) => LEFT + (i / Math.max(obs.length - 1, 1)) * (w - LEFT - RIGHT);
 
-  // Draw subtle horizontal grid lines (3 levels)
-  ctx.strokeStyle = "rgba(255,255,255,0.04)";
-  ctx.lineWidth = 1;
+  // Horizontal grid lines
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 0.5;
   for (let g = 0; g <= 2; g++) {
     const gy = TOP + (g / 2) * priceH;
     ctx.beginPath(); ctx.moveTo(LEFT, gy); ctx.lineTo(w - RIGHT, gy); ctx.stroke();
   }
 
-  // Draw volume bars (below price, in separate zone)
+  // Volume bars (separate bottom zone)
   const volumes = obs.map(o => Number(BigInt(o.volume)));
   const maxVol = Math.max(...volumes) || 1;
+  const barW = Math.max(1, Math.min(4, (w - LEFT - RIGHT) / obs.length * 0.6));
   for (let i = 0; i < obs.length; i++) {
     const x = idxX(i);
     const barH = Math.max(1, (volumes[i] / maxVol) * VOL_H);
-    ctx.globalAlpha = 0.25;
+    ctx.globalAlpha = 0.3;
     ctx.fillStyle = obs[i].isSell ? "#EF5350" : "#4CAF50";
-    ctx.fillRect(x - 1, h - BOTTOM - barH, 3, barH);
+    ctx.fillRect(x - barW / 2, h - BOTTOM - barH, barW, barH);
   }
   ctx.globalAlpha = 1;
 
-  // Draw price line with gradient fill
+  // Price line
   const lineColor = prices[prices.length - 1] >= prices[0] ? "#4CAF50" : "#EF5350";
   ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let i = 0; i < prices.length; i++) {
-    const x = idxX(i);
-    const y = priceY(prices[i]);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    i === 0 ? ctx.moveTo(idxX(i), priceY(prices[i])) : ctx.lineTo(idxX(i), priceY(prices[i]));
   }
   ctx.stroke();
+
   // Gradient fill under line
   const grad = ctx.createLinearGradient(0, TOP, 0, PRICE_BOTTOM);
   grad.addColorStop(0, lineColor + "18");
@@ -7483,41 +7498,37 @@ function handleTokenChart(data) {
   ctx.fillStyle = grad;
   ctx.beginPath();
   for (let i = 0; i < prices.length; i++) {
-    const x = idxX(i);
-    const y = priceY(prices[i]);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    i === 0 ? ctx.moveTo(idxX(i), priceY(prices[i])) : ctx.lineTo(idxX(i), priceY(prices[i]));
   }
   ctx.lineTo(idxX(prices.length - 1), PRICE_BOTTOM);
   ctx.lineTo(idxX(0), PRICE_BOTTOM);
   ctx.closePath();
   ctx.fill();
 
+  // Last price dot
+  const lastPx = idxX(prices.length - 1), lastPy = priceY(prices[prices.length - 1]);
+  ctx.fillStyle = lineColor;
+  ctx.beginPath(); ctx.arc(lastPx, lastPy, 2.5, 0, Math.PI * 2); ctx.fill();
+
   // Y-axis labels (per 1M to match header)
   ctx.fillStyle = "#555";
-  ctx.font = "8px monospace";
+  ctx.font = `${fontSize}px monospace`;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  ctx.fillText(formatEthPrice(max * 1e6), LEFT - 3, TOP);
-  const mid = (max + min) / 2;
-  ctx.fillText(formatEthPrice(mid * 1e6), LEFT - 3, TOP + priceH / 2);
-  ctx.fillText(formatEthPrice(min * 1e6), LEFT - 3, PRICE_BOTTOM);
+  ctx.fillText(formatEthPrice(max * 1e6), LEFT - 4, TOP + 1);
+  ctx.fillText(formatEthPrice(min * 1e6), LEFT - 4, PRICE_BOTTOM - 1);
 
   // X-axis time labels
   if (obs[0].timestamp && obs[obs.length - 1].timestamp) {
     ctx.fillStyle = "#444";
-    ctx.font = "8px monospace";
+    ctx.font = `${fontSize}px monospace`;
     ctx.textBaseline = "top";
     const now = Math.floor(Date.now() / 1000);
-    const fmt = (ts) => { const s = now - ts; if (s < 60) return "now"; if (s < 3600) return Math.floor(s / 60) + "m"; if (s < 86400) return Math.floor(s / 3600) + "h"; return Math.floor(s / 86400) + "d"; };
+    const fmt = (ts) => { const s = now - ts; if (s < 60) return "now"; if (s < 3600) return Math.floor(s / 60) + "m ago"; if (s < 86400) return Math.floor(s / 3600) + "h ago"; return Math.floor(s / 86400) + "d ago"; };
     ctx.textAlign = "left";
-    ctx.fillText(fmt(obs[0].timestamp), LEFT, h - BOTTOM + 4);
+    ctx.fillText(fmt(obs[0].timestamp), LEFT, h - BOTTOM + 3);
     ctx.textAlign = "right";
-    ctx.fillText(fmt(obs[obs.length - 1].timestamp), w - RIGHT, h - BOTTOM + 4);
-    if (obs.length > 10) {
-      const midIdx = Math.floor(obs.length / 2);
-      ctx.textAlign = "center";
-      ctx.fillText(fmt(obs[midIdx].timestamp), idxX(midIdx), h - BOTTOM + 4);
-    }
+    ctx.fillText(fmt(obs[obs.length - 1].timestamp), w - RIGHT, h - BOTTOM + 3);
   }
 
   // Price + change header
@@ -7528,9 +7539,10 @@ function handleTokenChart(data) {
   const priceHeader = document.getElementById("chart-price-header");
   if (priceHeader) {
     const perMil = lastPrice * 1e6;
+    const usdStr = window._ethUsd ? `<span style="font-size:11px;color:var(--text-muted);margin-left:6px;">$${(perMil * window._ethUsd).toFixed(perMil * window._ethUsd < 0.01 ? 6 : 2)}</span>` : "";
     priceHeader.innerHTML = `
       <span style="font-size:18px;font-weight:700;">${formatEthPrice(perMil)} ETH</span>
-      <span style="font-size:11px;color:var(--text-muted);margin-left:2px;">per 1M</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:2px;">per 1M</span>${usdStr}
       <span style="font-size:13px;font-weight:600;color:${isUp ? '#4CAF50' : '#EF5350'};margin-left:8px;">${formatPct(changePct)}</span>
     `;
   }
@@ -7540,15 +7552,17 @@ function handleTokenChart(data) {
     const statsEl = document.getElementById("chart-curve-stats");
     if (statsEl) {
       statsEl.dataset.sold = c.sold; // store for holders % calculation
-      const raised = (Number(BigInt(c.raisedETH)) / 1e18).toFixed(4);
+      const raisedNum = Number(BigInt(c.raisedETH)) / 1e18;
+      const raised = raisedNum.toFixed(4);
       const target = (Number(BigInt(c.graduationTarget)) / 1e18).toFixed(2);
       const pct = c.graduationTarget !== "0" ? Math.min(100, (Number(BigInt(c.raisedETH)) / Number(BigInt(c.graduationTarget)) * 100)).toFixed(1) : "0";
       const soldPct = c.cap !== "0" ? (Number(BigInt(c.sold)) / Number(BigInt(c.cap)) * 100).toFixed(1) : "0";
+      const raisedUsd = window._ethUsd ? ` ($${(raisedNum * window._ethUsd).toFixed(2)})` : "";
       statsEl.innerHTML = `
         <div style="padding:6px 8px;background:var(--surface-hover);border-radius:6px;">
           <div style="color:var(--text-muted);font-size:9px;margin-bottom:2px;">RAISED</div>
           <div style="font-weight:600;">${raised} ETH</div>
-          <div style="font-size:9px;color:var(--text-muted);">${pct}% of ${target}</div>
+          <div style="font-size:9px;color:var(--text-muted);">${pct}% of ${target}${raisedUsd}</div>
         </div>
         <div style="padding:6px 8px;background:var(--surface-hover);border-radius:6px;">
           <div style="color:var(--text-muted);font-size:9px;margin-bottom:2px;">SOLD</div>
