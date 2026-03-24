@@ -7071,11 +7071,15 @@ async function ensureAppWalletFunded(requiredWei, label) {
 }
 
 async function _getCurveSnapshot() {
-  for (let i = 0; i < _READ_RPCS.length; i++) {
+  // Prefer the external wallet's provider (no CORS issues) if available
+  const providers = [];
+  if (window._signer?.provider) providers.push(window._signer.provider);
+  for (let i = 0; i < _READ_RPCS.length; i++) providers.push(_qProvider());
+  for (const p of providers) {
     try {
-      const sale = new ethers.Contract(CURVE_SALE_ADDRESS, CURVE_SALE_LAUNCH_ABI, _qProvider());
+      const sale = new ethers.Contract(CURVE_SALE_ADDRESS, CURVE_SALE_LAUNCH_ABI, p);
       return await sale.curves(_chartTokenAddress);
-    } catch { _qProviderRotate(); }
+    } catch { if (p === _qProviderCache) _qProviderRotate(); }
   }
   throw new Error("All RPCs failed");
 }
@@ -7126,12 +7130,15 @@ async function _fetchTokenBalance() {
   if (!_chartTokenAddress) return;
   const addr = window._connectedAddress || myAppWallet?.address || myWalletAddress;
   if (!addr) return;
-  for (let i = 0; i < _READ_RPCS.length; i++) {
+  const providers = [];
+  if (window._signer?.provider) providers.push(window._signer.provider);
+  for (let i = 0; i < _READ_RPCS.length; i++) providers.push(_qProvider());
+  for (const p of providers) {
     try {
-      const token = new ethers.Contract(_chartTokenAddress, ["function balanceOf(address) view returns (uint256)"], _qProvider());
+      const token = new ethers.Contract(_chartTokenAddress, ["function balanceOf(address) view returns (uint256)"], p);
       _userTokenBalance = await token.balanceOf(addr);
       return;
-    } catch { _qProviderRotate(); }
+    } catch { if (p === _qProviderCache) _qProviderRotate(); }
   }
   _userTokenBalance = null;
 }
@@ -7233,7 +7240,10 @@ window.executeBuy = async function() {
       approxTokens = netETH * 10n**18n / price;
       // Marginal price overestimates tokens (curve integral gives fewer). Apply 5% haircut before slippage.
       minOut = approxTokens * 95n / 100n * BigInt(10000 - _slippageBps) / 10000n;
-    } catch (e) { if (e.message.includes("graduated")) { showToast(e.message, "info"); btn.disabled = false; btn.textContent = "Buy"; statusEl.style.display = "none"; return; } }
+    } catch (e) {
+      if (e.message.includes("graduated")) { showToast(e.message, "info"); } else { showToast("Failed to get price quote — try again", "error"); }
+      btn.disabled = false; btn.textContent = "Buy"; statusEl.style.display = "none"; return;
+    }
     btn.textContent = "Confirm...";
     const calldata = iface.encodeFunctionData("buyExactIn", [_chartTokenAddress, minOut, _deadline()]);
     const tx = await signer.sendTransaction({ to: CURVE_SALE_ADDRESS, data: calldata, value });
@@ -7292,7 +7302,10 @@ window.executeSell = async function() {
       const net = gross * BigInt(10000 - feeBps) / 10000n;
       // Marginal price overestimates proceeds (curve integral gives less). Apply 5% haircut before slippage.
       minProceeds = net * 95n / 100n * BigInt(10000 - _slippageBps) / 10000n;
-    } catch (e) { if (e.message?.includes("graduated")) { showToast(e.message, "info"); btn.disabled = false; btn.textContent = "Sell"; statusEl.style.display = "none"; return; } }
+    } catch (e) {
+      if (e.message?.includes("graduated")) { showToast(e.message, "info"); } else { showToast("Failed to get price quote — try again", "error"); }
+      btn.disabled = false; btn.textContent = "Sell"; statusEl.style.display = "none"; return;
+    }
     btn.textContent = "Selling...";
     const iface = new ethers.Interface(CURVE_SALE_LAUNCH_ABI);
     const calldata = iface.encodeFunctionData("sell", [_chartTokenAddress, amount, minProceeds, _deadline()]);

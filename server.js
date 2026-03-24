@@ -1057,41 +1057,84 @@ async function getTokenChartData(tokenAddress, maxObs = 500) {
   return { curve: null, observations: [], total: 0 };
 }
 
-// Batch multiple tokens: curves + observationCount for all in one multicall (for profile Coins tab)
+// Batch multiple tokens: curves + observationCount + last 10 observations per token in one multicall
+// Cached for 15s to avoid hammering RPCs on explore page
+const _tokenSummaryCache = new Map(); // key -> { data, ts }
+const _TOKEN_SUMMARY_TTL = 15_000;
+
 async function getMultiTokenSummary(tokenAddresses) {
   if (!tokenAddresses.length) return {};
-  for (const rpc of _RPCS) {
-    try {
-      const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
-      // Batch: curves() + observationCount() + observe(0, 50) + graduable() per token — 4 calls per token, 1 RPC total
-      const calls = [];
-      for (const addr of tokenAddresses) {
-        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("curves", [addr]) });
-        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observationCount", [addr]) });
-        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observe", [addr, 0, 50]) });
-        calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("graduable", [addr]) });
-      }
-      const results = await mc.aggregate3(calls);
-      const out = {};
-      for (let i = 0; i < tokenAddresses.length; i++) {
-        const base = i * 4;
-        const curve = results[base].success ? _decodeCurve(results[base].returnData) : null;
-        const countOk = results[base + 1].success;
-        const obsOk = results[base + 2].success;
-        const graduable = results[base + 3].success ? _saleIface.decodeFunctionResult("graduable", results[base + 3].returnData)[0] : false;
-        let observations = [], total = 0;
-        if (countOk && obsOk) {
-          const decoded = _decodeObservations(results[base + 1].returnData, results[base + 2].returnData);
-          observations = decoded.observations;
-          total = decoded.total;
-        }
-        out[tokenAddresses[i]] = { curve, graduable, observations, total };
-      }
-      _rpcOk(rpc);
-      return out;
-    } catch (e) { _rpcFail(rpc); console.warn(`getMultiTokenSummary error (${rpc}):`, e.message); }
+
+  // Check cache — return cached data for tokens we have, fetch only uncached
+  const out = {};
+  const uncached = [];
+  const now = Date.now();
+  for (const addr of tokenAddresses) {
+    const cached = _tokenSummaryCache.get(addr);
+    if (cached && now - cached.ts < _TOKEN_SUMMARY_TTL) out[addr] = cached.data;
+    else uncached.push(addr);
   }
-  return {};
+  if (uncached.length === 0) return out;
+
+  // Batch in chunks of 10 to keep multicall payload manageable
+  const CHUNK = 10;
+  for (let c = 0; c < uncached.length; c += CHUNK) {
+    const chunk = uncached.slice(c, c + CHUNK);
+    let fetched = false;
+    for (const rpc of _RPCS) {
+      try {
+        const mc = new ethers.Contract(MULTICALL3, MULTICALL3_ABI, _getProvider(rpc));
+        // 3 calls per token: curves() + observationCount() + observe(last 10) — lean payload
+        const calls = [];
+        for (const addr of chunk) {
+          calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("curves", [addr]) });
+          calls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observationCount", [addr]) });
+        }
+        const res1 = await mc.aggregate3(calls);
+        // Now build observe calls with correct ranges
+        const obsCalls = [];
+        const obsMeta = []; // track which tokens need observations
+        for (let i = 0; i < chunk.length; i++) {
+          const countOk = res1[i * 2 + 1].success;
+          if (countOk) {
+            const total = Number(_saleIface.decodeFunctionResult("observationCount", res1[i * 2 + 1].returnData)[0]);
+            if (total > 0) {
+              const start = Math.max(0, total - 10);
+              obsCalls.push({ target: CURVE_SALE_ADDRESS, allowFailure: true, callData: _saleIface.encodeFunctionData("observe", [chunk[i], start, Math.min(total, 10)]) });
+              obsMeta.push({ idx: i, total });
+            }
+          }
+        }
+        let obsResults = [];
+        if (obsCalls.length > 0) obsResults = await mc.aggregate3(obsCalls);
+
+        let obsIdx = 0;
+        for (let i = 0; i < chunk.length; i++) {
+          const curve = res1[i * 2].success ? _decodeCurve(res1[i * 2].returnData) : null;
+          let observations = [], total = 0;
+          if (obsMeta[obsIdx]?.idx === i) {
+            total = obsMeta[obsIdx].total;
+            if (obsResults[obsIdx]?.success) {
+              const raw = _saleIface.decodeFunctionResult("observe", obsResults[obsIdx].returnData)[0];
+              observations = raw.map(packed => {
+                const p = BigInt(packed);
+                return { price: (p >> 128n).toString(), volume: ((p >> 48n) & ((1n << 80n) - 1n)).toString(), timestamp: Number((p >> 8n) & ((1n << 40n) - 1n)), isSell: (p & 1n) === 1n };
+              });
+            }
+            obsIdx++;
+          }
+          const entry = { curve, graduable: false, observations, total };
+          out[chunk[i]] = entry;
+          _tokenSummaryCache.set(chunk[i], { data: entry, ts: now });
+        }
+        _rpcOk(rpc);
+        fetched = true;
+        break;
+      } catch (e) { _rpcFail(rpc); console.warn(`getMultiTokenSummary error (${rpc}):`, e.message); }
+    }
+    if (!fetched) console.warn("getMultiTokenSummary: all RPCs failed for chunk");
+  }
+  return out;
 }
 
 // Legacy wrappers for single-purpose callers
@@ -4319,6 +4362,7 @@ io.on("connection", (socket) => {
     const walletAddress = userData.walletAddress || userData.appWalletAddress;
     if (!walletAddress) return;
     await dbRecordTrade(tokenAddress, walletAddress, userData.name, type, tokenAmount || "0", ethAmount || "0", txHash);
+    _tokenSummaryCache.delete(tokenAddress.toLowerCase()); // invalidate explore cache
     // Broadcast trade to all viewers of this coin
     io.emit("token-trade", { tokenAddress, trader: walletAddress, traderName: userData.name, type, tokenAmount, ethAmount, txHash, createdAt: Date.now() });
     // Notify creator and track earnings
