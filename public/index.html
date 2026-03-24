@@ -996,7 +996,7 @@
     .search-input::placeholder { color: #444; }
     .contacts-list {
       display: flex; flex-direction: column; gap: 2px;
-      overflow-y: auto; flex: 1;
+      overflow-y: auto; flex: 1 1 0; min-height: 120px;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
@@ -1516,7 +1516,7 @@
     .chat-panel {
       display: none; flex-direction: column;
       border-top: 1px solid var(--border);
-      max-height: 280px; min-height: 120px;
+      max-height: 280px; flex-shrink: 1;
     }
     .chat-panel.active { display: flex; }
     .chat-toggle {
@@ -5079,7 +5079,7 @@ function connectSocket() {
     autoMeetCooldownHours = cooldownHours || 24;
     updateAutoMeetUI();
     // Fetch all initial data in one request
-    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); socket.emit("get-my-gated-rooms"); socket.emit("get-launched-tokens", { limit: 50, offset: 0 }); socket.emit("browse-rooms", { limit: 50, offset: 0 }); }
+    if (socket) { socket.emit("init-data"); socket.emit("get-my-groups"); socket.emit("get-my-gated-rooms"); }
     if (reconnected) showToast("Reconnected", "success", 1500);
     // Re-sync presence status after reconnect (server defaults to "online")
     if (manualStatus && myPresenceStatus !== "online" && socket) {
@@ -5189,13 +5189,14 @@ function connectSocket() {
       const anyActive = document.querySelector(".screen.active");
       if (!anyActive) showScreen("contacts-screen");
     } else {
-      // Fresh login — show contacts screen
-      showScreen("contacts-screen");
-      if (!myContacts || myContacts.length === 0) {
-        setTimeout(() => {
-          const feedTab = document.getElementById("tab-feed");
-          if (feedTab && !feedTab.classList.contains("active")) feedTab.click();
-        }, 500);
+      // Fresh login — if user is already viewing a screen (e.g. server restarted
+      // while they were on a profile), don't yank them back
+      const alreadyViewing = document.querySelector(".screen.active:not(#login-screen)");
+      if (!alreadyViewing) {
+        showScreen("contacts-screen");
+        // Default to feed tab — contacts will be empty on first login
+        const feedTab = document.getElementById("tab-feed");
+        if (feedTab && !feedTab.classList.contains("active")) feedTab.click();
       }
     }
     // Pre-load feed
@@ -5304,11 +5305,6 @@ function connectSocket() {
     myContacts = contacts || [];
     renderContacts($("#search-input").value);
     updateProfileFollowBtn(); // keep follow button in sync
-    // If user has no contacts and no other users online, show feed
-    if (myContacts.length === 0 && users.filter(u => u.userId !== myUserId).length === 0) {
-      const feedTab = document.getElementById("tab-feed");
-      if (feedTab && !feedTab.classList.contains("active")) feedTab.click();
-    }
   });
 
   // Caller flow
@@ -6336,10 +6332,6 @@ function connectSocket() {
     // Contacts
     myContacts = contacts || [];
     renderContacts($("#search-input")?.value || "");
-    if (myContacts.length === 0 && users.filter(u => u.userId !== myUserId).length === 0) {
-      const feedTab = document.getElementById("tab-feed");
-      if (feedTab && !feedTab.classList.contains("active")) feedTab.click();
-    }
     // Chat history
     if (chatHistory) {
       const container = $("#chat-messages");

@@ -3606,22 +3606,25 @@ io.on("connection", (socket) => {
     const userId = socket.userId; if (!userId) return;
     const userData = onlineUsers.get(userId); if (!userData) return;
     const key = userData.name.toLowerCase().trim();
+    try {
     const [contacts, notifications, unreadCount, socialScore, feed] = await Promise.all([
       dbGetContacts(key),
       dbGetNotifications(key),
       dbGetUnreadCount(key),
       dbGetSocialScore(key),
       (async () => {
-        const posts = await dbGetGlobalFeed(30);
-        const myNameLower = key;
-        for (const post of posts) {
-          const likers = await dbGetPostLikes(post.id);
-          post.likers = likers;
-          post.liked = myNameLower ? likers.includes(myNameLower) : false;
-          post.authorAvatar = await dbGetAvatar(post.author) || null;
-          post.authorName = post.author;
-        }
-        return posts;
+        try {
+          const posts = await dbGetGlobalFeed(30);
+          const myNameLower = key;
+          for (const post of posts) {
+            const likers = await dbGetPostLikes(post.id);
+            post.likers = likers;
+            post.liked = myNameLower ? likers.includes(myNameLower) : false;
+            post.authorAvatar = await dbGetAvatar(post.author) || null;
+            post.authorName = post.author;
+          }
+          return posts;
+        } catch (e) { console.warn("Feed enrichment error:", e.message); return []; }
       })(),
     ]);
     // Pair meetings
@@ -3660,6 +3663,11 @@ io.on("connection", (socket) => {
       pairs,
       globalFeed: feed,
     });
+    } catch (e) {
+      console.error("[init-data] FATAL:", e.message, e.stack);
+      // Always emit something so the client isn't left hanging
+      socket.emit("init-data", { contacts: [], chatHistory: publicChat.slice(-50), notifications: [], unreadCount: 0, socialScore: { score: 0, onlineSeconds: 0, pairCredits: 0, totalMeets: 0 }, pairs: {}, globalFeed: [] });
+    }
   });
 
   socket.on("get-notifications", async () => {
