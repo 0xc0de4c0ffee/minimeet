@@ -1692,7 +1692,7 @@
       display: flex; flex-direction: column; gap: 1px;
       max-width: 80%; padding: 8px 12px;
       border-radius: 14px; font-size: 13px; line-height: 1.4;
-      word-break: break-word;
+      word-break: break-word; position: relative;
     }
     .dm-msg.sent {
       align-self: flex-end;
@@ -1761,6 +1761,38 @@
     .dm-msg img.dm-msg-img {
       max-width: 200px; max-height: 150px; border-radius: 8px;
       margin-top: 4px; cursor: pointer; display: block;
+    }
+    .dm-msg .dm-reply-quote {
+      font-size: 11px; padding: 4px 8px; margin-bottom: 4px;
+      border-radius: 6px; cursor: pointer; line-height: 1.3;
+      overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+    .dm-msg.sent .dm-reply-quote {
+      background: rgba(255,255,255,0.15); border-left: 2px solid rgba(255,255,255,0.5);
+    }
+    .dm-msg.received .dm-reply-quote {
+      background: rgba(255,255,255,0.06); border-left: 2px solid var(--red);
+    }
+    .dm-msg .dm-reply-btn {
+      display: none; position: absolute; top: 50%; transform: translateY(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+      width: 24px; height: 24px; cursor: pointer; align-items: center; justify-content: center;
+      color: var(--text-muted); font-size: 12px; padding: 0; z-index: 1;
+    }
+    .dm-msg:hover .dm-reply-btn { display: flex; }
+    .dm-msg.sent .dm-reply-btn { left: -32px; }
+    .dm-msg.received .dm-reply-btn { right: -32px; }
+    .dm-reply-bar {
+      display: none; padding: 6px 12px; border-top: 1px solid var(--border);
+      font-size: 12px; color: var(--text-muted); align-items: center; gap: 8px;
+    }
+    .dm-reply-bar.active { display: flex; }
+    .dm-reply-bar .dm-reply-bar-text {
+      flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .dm-reply-bar .dm-reply-bar-close {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 16px; padding: 0 4px; line-height: 1;
     }
     .dm-emoji-bar {
       display: none; padding: 4px 8px; gap: 2px;
@@ -2053,6 +2085,11 @@
       <div class="dm-typing-indicator" id="dm-typing-indicator">typing<span class="dm-typing-dots"><span></span><span></span><span></span></span></div>
       <div class="dm-image-preview" id="dm-image-preview"></div>
       <div class="dm-emoji-bar" id="dm-emoji-bar"></div>
+      <div class="dm-reply-bar" id="dm-reply-bar">
+        <span style="opacity:0.5;">&#8617;</span>
+        <span class="dm-reply-bar-text" id="dm-reply-bar-text"></span>
+        <button class="dm-reply-bar-close" id="dm-reply-bar-close">&times;</button>
+      </div>
       <div class="dm-input-row">
         <button class="quick-post-img-btn" id="dm-emoji-toggle" title="Emoji">
           <span style="font-size:14px;">😊</span>
@@ -4282,6 +4319,7 @@ function closeDM() {
   $("#dm-overlay").classList.remove("active");
   dmTargetUserId = null;
   activeGroupId = null;
+  clearDMReply();
   if (activeGatedRoomId) {
     activeGatedRoomId = null;
     // Clean URL if it was a gate link
@@ -4307,8 +4345,18 @@ function appendDMMsg(msg, container) {
   const el = document.createElement("div");
   el.className = `dm-msg ${msg.sent ? "sent" : "received"}`;
   if (msg.ts) el.dataset.ts = msg.ts;
+  if (msg.id) el.dataset.id = msg.id;
   const lockIcon = msg.encrypted ? ' <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.4;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>' : '';
   let content = "";
+  // Reply quote
+  if (msg.replyTo) {
+    const dmKey = dmTargetName ? dmTargetName.toLowerCase() : "";
+    const allMsgs = dmMessages.get(dmKey) || [];
+    const parent = allMsgs.find(m => m.id === msg.replyTo);
+    const quoteText = parent ? escapeHtml((parent.text || "").slice(0, 100)) : "message";
+    const who = parent ? (parent.sent ? "You" : escapeHtml(dmTargetName || "")) : "";
+    content += `<div class="dm-reply-quote" onclick="scrollToDMMsg('${escapeJSAttr(msg.replyTo)}')">${who ? `<strong>${who}</strong> ` : ""}${quoteText || (parent?.image ? "Photo" : "message")}</div>`;
+  }
   if (msg.text) content += `<div>${linkify(msg.text)}</div>`;
   if (msg.image) content += `<img class="dm-msg-img" src="${escapeHtml(msg.image)}" alt="" />`;
   content += `<div class="dm-msg-time">${formatChatTime(msg.ts)}${lockIcon}</div>`;
@@ -4318,12 +4366,45 @@ function appendDMMsg(msg, container) {
     const isRead = msg.ts && msg.ts <= readAt;
     content += `<div class="dm-read-status${isRead ? " read" : ""}">${isRead ? "Read" : "Sent"}</div>`;
   }
+  // Reply button
+  if (msg.id) content += `<button class="dm-reply-btn" onclick="setDMReply('${escapeJSAttr(msg.id)}')">&#8617;</button>`;
   el.innerHTML = content;
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
 
 let pendingDMImage = null;
+let dmReplyTo = null; // { id, text, sent } — message being replied to
+
+function setDMReply(msgId) {
+  const dmKey = dmTargetName ? dmTargetName.toLowerCase() : "";
+  const msgs = dmMessages.get(dmKey) || [];
+  const msg = msgs.find(m => m.id === msgId);
+  if (!msg) return;
+  dmReplyTo = { id: msg.id, text: msg.text, sent: msg.sent, image: !!msg.image };
+  const bar = document.getElementById("dm-reply-bar");
+  const barText = document.getElementById("dm-reply-bar-text");
+  const who = msg.sent ? "yourself" : (dmTargetName || "");
+  barText.textContent = `Replying to ${who}: ${msg.text || (msg.image ? "Photo" : "")}`.slice(0, 120);
+  bar.classList.add("active");
+  $("#dm-input").focus();
+}
+
+function clearDMReply() {
+  dmReplyTo = null;
+  const bar = document.getElementById("dm-reply-bar");
+  if (bar) bar.classList.remove("active");
+}
+
+function scrollToDMMsg(msgId) {
+  const el = document.querySelector(`#dm-messages .dm-msg[data-id="${CSS.escape(msgId)}"]`);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.style.transition = "background 0.3s";
+    el.style.background = "rgba(255,255,255,0.1)";
+    setTimeout(() => { el.style.background = ""; }, 1200);
+  }
+}
 
 async function sendDM() {
   const input = $("#dm-input");
@@ -4379,20 +4460,26 @@ async function sendDM() {
     if (!confirm("Encryption failed. Send this message unencrypted? The server will be able to read it.")) return;
   }
 
+  if (!socket || !socket.connected) { showToast("Not connected — try again", "error", 2000); return; }
+
+  // Capture reply context before clearing
+  const replyToId = dmReplyTo ? dmReplyTo.id : null;
+  clearDMReply();
+
   // Add locally for sender (server echo is ciphertext)
   if (encrypted) {
     const dmKey = dmTargetName.toLowerCase();
     if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
-    const entry = { id: Date.now().toString(36), text: text || "", image, ts: Date.now(), sent: true, encrypted: true };
+    const entry = { id: Date.now().toString(36), text: text || "", image, ts: Date.now(), sent: true, encrypted: true, replyTo: replyToId };
     dmMessages.get(dmKey).push(entry);
     appendDMMsg(entry);
     playSendSound();
   }
 
   const msg = { text: finalText, encrypted };
+  if (replyToId) msg.replyTo = replyToId;
   if (isRich && !encrypted) { msg.text = text || ""; msg.image = image; } // plaintext with image
   if (dmTargetUserId) { msg.toUserId = dmTargetUserId; } else { msg.toName = dmTargetName; }
-  if (!socket || !socket.connected) { showToast("Not connected — try again", "error", 2000); return; }
   socket.emit("chat-dm", msg);
 }
 
@@ -5042,6 +5129,7 @@ function connectSocket() {
   socket = io(SERVER_URL, {
     reconnection: true, reconnectionAttempts: Infinity,
     reconnectionDelay: 1000, reconnectionDelayMax: 10000,
+    transports: ["websocket", "polling"], // prefer WebSocket, fall back to polling
   });
 
   // Register private room socket events
@@ -5299,10 +5387,16 @@ function connectSocket() {
     if (sub && sub.textContent === "Reconnecting...") sub.textContent = "No schedule. 1 minute calls only.\nEasiest way to catch up or keep in touch.";
   });
 
+  let _userListRenderTimer = null;
   socket.on("user-list", (list) => {
     users = list;
     cacheAllOnlineUsers();
-    renderContacts($("#search-input").value);
+    // Debounce contact list re-renders (server broadcasts frequently)
+    if (_userListRenderTimer) clearTimeout(_userListRenderTimer);
+    _userListRenderTimer = setTimeout(() => {
+      _userListRenderTimer = null;
+      renderContacts($("#search-input").value);
+    }, 100);
     // Update own stats from the broadcast
     const me = list.find(u => u.userId === myUserId);
     if (me && me.stats) { myStats = me.stats; updateMyStats(); }
@@ -5591,7 +5685,7 @@ function connectSocket() {
         } else { text = "[encrypted]"; }
       } catch { text = "[cannot decrypt]"; }
     }
-    const entry = { id: msg.id, text, image, ts: msg.ts, sent: false, encrypted: msg.encrypted };
+    const entry = { id: msg.id, text, image, ts: msg.ts, sent: false, encrypted: msg.encrypted, replyTo: msg.replyTo || null };
     dmMessages.get(dmKey).push(entry);
     if (dmTargetName && dmTargetName.toLowerCase() === dmKey) {
       appendDMMsg(entry);
@@ -5613,11 +5707,25 @@ function connectSocket() {
   });
 
   socket.on("chat-dm-sent", (msg) => {
-    // Skip echo for encrypted messages — already added locally in sendDM
-    if (msg.encrypted) { playSendSound(); return; }
+    // For encrypted messages, update the local entry's ID with the server ID (for dedup with dm-history)
+    if (msg.encrypted) {
+      const dmKey = (msg.toName || "").toLowerCase();
+      const msgs = dmMessages.get(dmKey);
+      if (msgs) {
+        // Find the most recent locally-added encrypted message near this timestamp and update its ID
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].encrypted && msgs[i].sent && Math.abs(msgs[i].ts - msg.ts) < 3000) {
+            msgs[i].id = msg.id;
+            break;
+          }
+        }
+      }
+      playSendSound();
+      return;
+    }
     const dmKey = (msg.toName || "").toLowerCase();
     if (!dmMessages.has(dmKey)) dmMessages.set(dmKey, []);
-    const entry = { id: msg.id, text: msg.text, image: msg.image || null, ts: msg.ts, sent: true };
+    const entry = { id: msg.id, text: msg.text, image: msg.image || null, ts: msg.ts, sent: true, replyTo: msg.replyTo || null };
     dmMessages.get(dmKey).push(entry);
     if (dmTargetName && dmTargetName.toLowerCase() === dmKey) {
       appendDMMsg(entry);
@@ -5671,11 +5779,22 @@ function connectSocket() {
           } else { text = "[encrypted]"; }
         } catch { text = "[cannot decrypt]"; }
       }
-      historyEntries.push({ id: m.id, text, image, ts: m.ts, sent: m.sender === myNameLower, encrypted: m.encrypted });
+      historyEntries.push({ id: m.id, text, image, ts: m.ts, sent: m.sender === myNameLower, encrypted: m.encrypted, replyTo: m.replyTo || null });
     }
-    // Merge history with existing in-memory messages, deduplicate by id, sort by time
+    // Merge history with existing in-memory messages, deduplicate by id + timestamp fallback for encrypted msgs
     const seen = new Set();
-    const deduped = [...historyEntries, ...existing].filter(m => { if (!m.id || seen.has(m.id)) return false; seen.add(m.id); return true; }).sort((a, b) => a.ts - b.ts);
+    const seenTs = new Set(); // secondary dedup for encrypted messages with mismatched client/server IDs
+    const deduped = [...historyEntries, ...existing].filter(m => {
+      if (!m.id || seen.has(m.id)) return false;
+      // For encrypted sent messages, also dedup by timestamp (client and server IDs may differ)
+      if (m.encrypted && m.sent) {
+        const tsKey = `${m.ts}`;
+        if (seenTs.has(tsKey)) return false;
+        seenTs.add(tsKey);
+      }
+      seen.add(m.id);
+      return true;
+    }).sort((a, b) => a.ts - b.ts);
     dmMessages.set(dmKey, deduped);
     // Re-render if DM panel is open for this peer
     if (dmTargetName && dmTargetName.toLowerCase() === peerName.toLowerCase()) {
@@ -6037,6 +6156,10 @@ function connectSocket() {
       }
       dmMessages.delete(oldKey);
       dmMessages.set(newKey, msgs);
+    }
+    if (dmReadCursors.has(oldKey)) {
+      dmReadCursors.set(newKey, dmReadCursors.get(oldKey));
+      dmReadCursors.delete(oldKey);
     }
     if (dmTargetName && dmTargetName.toLowerCase() === oldKey) {
       dmTargetName = newName;
@@ -6596,6 +6719,13 @@ function connectSocket() {
       }, 2000);
     }
   });
+
+  // Force reconnect when tab becomes visible after being hidden (mobile/background tabs)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && socket && !socket.connected) {
+      socket.connect();
+    }
+  });
 }
 
 // ── Event Listeners ──────────────────────────────────────────────────────
@@ -6787,7 +6917,7 @@ function renderCoinCard(token) {
       </div>
       ${token.description ? `<div style="font-size:11px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(token.description)}</div>` : ""}
       <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">
-        ${priceLabel ? priceLabel + " &middot; " : ""}${shortAddr} &middot; ${ago}
+        ${creator ? `<span onclick="event.stopPropagation();showProfile('${escapeJSAttr(creator)}')" style="cursor:pointer;color:${getColor(creator)};">${escapeHtml(creator)}</span> &middot; ` : ""}${priceLabel ? priceLabel + " &middot; " : ""}${shortAddr} &middot; ${ago}
         ${token.roomId ? ` &middot; <span onclick="event.stopPropagation();showGateScreen('${escapeJSAttr(token.roomId)}')" style="color:#4CAF50;cursor:pointer;">chat</span>` : ""}
       </div>
     </div>
@@ -7426,10 +7556,11 @@ function renderHoldersList(holders, totalSold) {
     const pct = circulating > 0n ? Number(bal * 10000n / circulating) / 100 : 0;
     const display = (Number(bal) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 0 });
     const name = h.name || (h.address.slice(0, 6) + "..." + h.address.slice(-4));
-    const nameClick = h.name ? `onclick="showProfile('${escapeJSAttr(h.name)}')" style="cursor:pointer;color:${getColor(name)};font-weight:600;"` : `style="color:var(--text-muted);"`;
+    const profileId = h.name || h.address;
+    const nameStyle = h.name ? `color:${getColor(name)};font-weight:600;` : `color:var(--text-muted);`;
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--border);">
       <span style="color:var(--text-muted);font-size:10px;width:18px;text-align:right;">${i + 1}</span>
-      <span ${nameClick}>${escapeHtml(name)}</span>
+      <span onclick="showProfile('${escapeJSAttr(profileId)}')" style="cursor:pointer;${nameStyle}">${escapeHtml(name)}</span>
       <span style="margin-left:auto;font-family:var(--font-mono);font-size:11px;">${display}</span>
       <span style="color:var(--text-muted);font-size:10px;width:42px;text-align:right;">${pct.toFixed(1)}%</span>
     </div>`;
@@ -7445,13 +7576,14 @@ function renderActivityList(trades) {
     const color = isBuy ? "#4CAF50" : "#EF5350";
     const label = isBuy ? "BUY" : "SELL";
     const name = t.traderName || (t.trader.slice(0, 6) + "..." + t.trader.slice(-4));
-    const nameClick = t.traderName ? `onclick="showProfile('${escapeJSAttr(t.traderName)}')" style="cursor:pointer;font-weight:600;color:var(--text);"` : `style="color:var(--text-muted);"`;
+    const profileId = t.traderName || t.trader;
+    const nameStyle = t.traderName ? `font-weight:600;color:var(--text);` : `color:var(--text-muted);`;
     const ethAmt = t.ethAmount ? parseFloat(t.ethAmount) : 0;
     const ago = formatTimeAgo(t.createdAt);
     const txLink = t.txHash ? `<a href="https://etherscan.io/tx/${escapeHtml(t.txHash)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:none;font-size:10px;">tx</a>` : "";
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid var(--border);font-size:12px;">
       <span style="color:${color};font-weight:700;font-size:10px;width:28px;">${label}</span>
-      <span ${nameClick}>${escapeHtml(name)}</span>
+      <span onclick="showProfile('${escapeJSAttr(profileId)}')" style="cursor:pointer;${nameStyle}">${escapeHtml(name)}</span>
       <span style="margin-left:auto;font-family:var(--font-mono);font-size:11px;">${ethAmt > 0 ? ethAmt.toFixed(4) + ' ETH' : ''}</span>
       <span style="color:var(--text-muted);font-size:10px;">${ago}</span>
       ${txLink}
@@ -7695,8 +7827,8 @@ function handleTokenInfo(data) {
   if (nameEl && data.name) nameEl.textContent = `${data.name} ($${data.symbol})`;
   if (infoEl) {
     const addr = data.tokenAddress;
-    const creator = (data.creator || "unknown").toLowerCase();
-    const creatorDisplay = escapeHtml(data.creator || "unknown");
+    const creator = data.creator || "unknown";
+    const creatorDisplay = escapeHtml(creator);
     const avatar = data.creatorAvatar;
     const pfpColor = getColor(creator);
     const pfpBg = avatar ? `background-image:${safeCssUrl(avatar)};background-size:cover;background-position:center` : `background:${pfpColor}`;
@@ -7755,10 +7887,20 @@ function showProfile(username) {
     const handle = username.slice(1).toLowerCase();
     const found = users.find(u => u.xUsername && u.xUsername.toLowerCase() === handle);
     if (found) resolvedName = found.name;
+    else {
+      // Check cached metadata for offline users
+      const cached = getCachedMeta("@" + handle);
+      if (cached?.name) resolvedName = cached.name;
+    }
   } else if (isWalletAddress) {
     const addr = username.toLowerCase();
     const found = users.find(u => u.walletAddress && u.walletAddress.toLowerCase() === addr);
     if (found) resolvedName = found.name;
+    else {
+      // Check cached metadata for offline users
+      const cached = getCachedMeta(addr);
+      if (cached?.name) resolvedName = cached.name;
+    }
   }
 
   profileTarget = resolvedName;
@@ -8775,7 +8917,18 @@ async function loadDMConversations() {
   if (!myName) return;
   try {
     const res = await fetch(`/api/dm-conversations?name=${encodeURIComponent(myName.toLowerCase())}&token=${encodeURIComponent(localStorage.getItem("om_sessionToken") || "")}`);
-    if (res.ok) dmConversations = await res.json();
+    if (res.ok) {
+      const serverConvos = await res.json();
+      // Merge: keep whichever entry (server or real-time) has the newer lastTime per peer
+      const merged = new Map();
+      for (const c of serverConvos) merged.set(c.peerName.toLowerCase(), c);
+      for (const c of dmConversations) {
+        const key = c.peerName.toLowerCase();
+        const existing = merged.get(key);
+        if (!existing || c.lastTime > existing.lastTime) merged.set(key, c);
+      }
+      dmConversations = [...merged.values()].sort((a, b) => b.lastTime - a.lastTime);
+    }
   } catch {}
 }
 
@@ -10058,6 +10211,7 @@ $("#auto-meet-btn").addEventListener("click", (e) => {
 // DM panel
 $("#dm-close").addEventListener("click", closeDM);
 $("#dm-send").addEventListener("click", sendDM);
+$("#dm-reply-bar-close").addEventListener("click", clearDMReply);
 $("#dm-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendDM(); });
 $("#dm-input").addEventListener("input", () => {
   if (!socket || !dmTargetName) return;

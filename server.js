@@ -5,11 +5,15 @@ const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const compression = require("compression");
 const ethers = require("ethers");
 const { verifyMessage, computeAddress } = ethers;
 
 const app = express();
 const server = http.createServer(app);
+
+// Gzip/deflate compression for all HTTP responses
+app.use(compression());
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -43,6 +47,8 @@ const io = new Server(server, {
   pingTimeout: 30000,
   pingInterval: 10000,
   maxHttpBufferSize: 1e6,
+  transports: ["websocket", "polling"], // prefer WebSocket, fall back to polling
+  perMessageDeflate: { threshold: 1024 }, // compress socket messages > 1KB
 });
 
 // ─── Supabase / JSON fallback ───────────────────────────────────────────────
@@ -623,18 +629,20 @@ async function dbSaveDM(senderName, receiverName, msg) {
       const row = { id: msg.id, pair, sender: senderName.toLowerCase().trim(), sender_name: msg.fromName, text: msg.text, created_at: new Date(msg.ts).toISOString() };
       if (msg.encrypted) row.encrypted = true;
       if (msg.image) row.image = msg.image;
-      const { error } = await supabase.from("direct_messages").insert(row);
-      if (error && msg.image) {
-        // Retry without image in case the column doesn't exist yet
+      if (msg.replyTo) row.reply_to = msg.replyTo;
+      let { error } = await supabase.from("direct_messages").insert(row);
+      if (error) {
+        // Retry without optional columns in case they don't exist yet
         delete row.image;
-        await supabase.from("direct_messages").insert(row);
+        delete row.reply_to;
+        ({ error } = await supabase.from("direct_messages").insert(row));
       }
     } catch (e) { console.warn("DM write error:", e.message); }
     return;
   }
   const stored = jsonGet("direct_messages", pair);
   let msgs; try { msgs = stored ? JSON.parse(stored) : []; } catch { msgs = []; }
-  msgs.push({ id: msg.id, sender: senderName.toLowerCase().trim(), senderName: msg.fromName, text: msg.text, image: msg.image || null, encrypted: msg.encrypted || false, ts: msg.ts });
+  msgs.push({ id: msg.id, sender: senderName.toLowerCase().trim(), senderName: msg.fromName, text: msg.text, image: msg.image || null, encrypted: msg.encrypted || false, ts: msg.ts, replyTo: msg.replyTo || null });
   if (msgs.length > 100) msgs.splice(0, msgs.length - 100);
   jsonSet("direct_messages", pair, JSON.stringify(msgs));
 }
@@ -649,7 +657,7 @@ async function dbLoadDMs(nameA, nameB, limit = 50, before = null) {
       if (before) query = query.lt("created_at", new Date(before).toISOString());
       const { data } = await query;
       if (data) return data.reverse().map(d => ({
-        id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, image: d.image || null, encrypted: d.encrypted || false, ts: new Date(d.created_at).getTime(),
+        id: d.id, sender: d.sender, senderName: d.sender_name, text: d.text, image: d.image || null, encrypted: d.encrypted || false, ts: new Date(d.created_at).getTime(), replyTo: d.reply_to || null,
       }));
     } catch (e) { console.warn("DM read error:", e.message); }
     return [];
@@ -912,7 +920,7 @@ const DEFAULT_LAUNCH_PARAMS = {
   sniperFeeBps:      500,   // 5% sniper fee at launch
   sniperDuration:    300,   // decays to 1% over 5 min
   maxBuyBps:         1000,  // 10% max per buy (anti-whale)
-  // Post-graduation creator fee: 0.50% on buys, 0.50% on sells → routed through contract
+  // Post-graduation creator fee: 0.05% on buys, 0.05% on sells → routed through contract
   creatorFee:        null,  // set dynamically per launch with creator's wallet as beneficiary
   vestCliff:         0,
   vestDuration:      0
@@ -2326,6 +2334,7 @@ const streamChats = new Map(); // streamId -> [ messages ]
 
 // Debounced broadcast — coalesces rapid-fire calls, always uses latest state
 let _broadcastTimer = null;
+const BROADCAST_DEBOUNCE_MS = 150; // coalesce rapid state changes
 function broadcastUserList() {
   if (_broadcastTimer) clearTimeout(_broadcastTimer);
   _broadcastTimer = setTimeout(() => {
@@ -2362,7 +2371,7 @@ function broadcastUserList() {
     }
     io.emit("user-list", users);
     io.emit("online-count", users.length);
-  }, 50);
+  }, BROADCAST_DEBOUNCE_MS);
 }
 
 function getSocketByUserId(userId) {
@@ -3029,7 +3038,7 @@ io.on("connection", (socket) => {
   });
 
   // P2P direct messages (persisted)
-  socket.on("chat-dm", async ({ toUserId, toName, text, image, encrypted }) => {
+  socket.on("chat-dm", async ({ toUserId, toName, text, image, encrypted, replyTo }) => {
     const isEncrypted = !!encrypted;
     // Stricter rate limit for large encrypted payloads (image bundles)
     if (isEncrypted && typeof text === "string" && text.length > 5000) {
@@ -3065,13 +3074,14 @@ io.on("connection", (socket) => {
     if (!targetName) return;
 
     // Build message, deliver, persist, notify
-    const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, image: safeImage, encrypted: isEncrypted, ts: Date.now() };
+    const safeReplyTo = (replyTo && typeof replyTo === "string") ? replyTo.slice(0, 20) : null;
+    const msg = { id: uuidv4().slice(0, 10), fromUserId: userId, fromName: userData.name, fromAvatar: userData.avatar || null, text: trimmed, image: safeImage, encrypted: isEncrypted, ts: Date.now(), replyTo: safeReplyTo };
     if (targetUserId) {
       const ts = getSocketByUserId(targetUserId);
       if (ts) ts.emit("chat-dm", msg);
     }
     socket.emit("chat-dm-sent", { toUserId: targetUserId, toName: targetName, ...msg });
-    dbSaveDM(userData.name, targetName, msg);
+    await dbSaveDM(userData.name, targetName, msg);
     const dmNotif = await dbCreateNotification(targetName, "dm", userData.name, null, isEncrypted ? "[encrypted message]" : trimmed);
     emitNotification(targetName, dmNotif);
     // Notify both sides to refresh conversation list
@@ -4429,6 +4439,17 @@ io.on("connection", (socket) => {
   socket.on("get-token-activity", async ({ tokenAddress, limit }) => {
     if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) return;
     const trades = await dbGetTokenTrades(tokenAddress, Math.min(limit || 50, 100));
+    // Resolve unnamed traders from wallet registry
+    const unnamed = trades.filter(t => !t.traderName && t.trader);
+    if (unnamed.length > 0) {
+      const seen = new Set();
+      await Promise.all(unnamed.map(async (t) => {
+        if (seen.has(t.trader)) return;
+        seen.add(t.trader);
+        const owner = await dbGetWalletOwner(t.trader.toLowerCase());
+        if (owner) trades.forEach(tr => { if (tr.trader === t.trader && !tr.traderName) tr.traderName = owner; });
+      }));
+    }
     socket.emit("token-activity", { tokenAddress, trades });
   });
 
@@ -4463,6 +4484,14 @@ io.on("connection", (socket) => {
         const addr = (m.walletAddress || "").toLowerCase();
         if (addr && /^0x[0-9a-f]{40}$/.test(addr) && !walletMap.has(addr)) walletMap.set(addr, m.userName);
       }
+    }
+    // Resolve any unnamed wallets from the wallet registry
+    const unnamed = [...walletMap.entries()].filter(([, name]) => !name);
+    if (unnamed.length > 0) {
+      await Promise.all(unnamed.map(async ([addr]) => {
+        const owner = await dbGetWalletOwner(addr);
+        if (owner) walletMap.set(addr, owner);
+      }));
     }
     if (walletMap.size === 0) { socket.emit("token-holders", { tokenAddress, holders: [] }); return; }
     const candidates = [...walletMap.entries()].map(([addr, name]) => ({ trader: addr, traderName: name }));
@@ -5063,9 +5092,10 @@ app.get("/api/dm-conversations", async (req, res) => {
       // Use parameterized .like() queries instead of .or() with string interpolation
       // to avoid PostgREST filter injection via special chars in names
       const safeName = name.replace(/[%_\\]/g, "\\$&"); // escape LIKE wildcards only
+      // Fetch enough messages to cover all conversations (active chats can produce many rows)
       const [{ data: d1 }, { data: d2 }] = await Promise.all([
-        supabase.from("direct_messages").select("pair, text, encrypted, created_at").like("pair", `${safeName}:%`).order("created_at", { ascending: false }).limit(100),
-        supabase.from("direct_messages").select("pair, text, encrypted, created_at").like("pair", `%:${safeName}`).order("created_at", { ascending: false }).limit(100),
+        supabase.from("direct_messages").select("pair, text, encrypted, created_at").like("pair", `${safeName}:%`).order("created_at", { ascending: false }).limit(500),
+        supabase.from("direct_messages").select("pair, text, encrypted, created_at").like("pair", `%:${safeName}`).order("created_at", { ascending: false }).limit(500),
       ]);
       const data = [...(d1 || []), ...(d2 || [])];
       if (data) {
@@ -5078,7 +5108,7 @@ app.get("/api/dm-conversations", async (req, res) => {
             convos.set(d.pair, { peerName, lastMessage: d.encrypted ? "[encrypted]" : d.text?.slice(0, 50), lastTime: new Date(d.created_at).getTime() });
           }
         }
-        return res.json([...convos.values()].sort((a, b) => b.lastTime - a.lastTime));
+        return res.json([...convos.values()].sort((a, b) => b.lastTime - a.lastTime).slice(0, 100));
       }
     } catch (e) { console.warn("dm-conversations query error:", e.message); }
   } else {
@@ -5095,7 +5125,7 @@ app.get("/api/dm-conversations", async (req, res) => {
         convos.push({ peerName, lastMessage: last.encrypted ? "[encrypted]" : (last.text || "").slice(0, 50), lastTime: last.ts });
       } catch {}
     }
-    return res.json(convos.sort((a, b) => b.lastTime - a.lastTime));
+    return res.json(convos.sort((a, b) => b.lastTime - a.lastTime).slice(0, 100));
   }
   res.json([]);
 });
@@ -5188,7 +5218,16 @@ app.get("/", async (req, res, next) => {
   res.send(html);
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  maxAge: IS_PROD ? "1h" : 0,
+  etag: true,
+  setHeaders: (res, filePath) => {
+    // Never cache index.html — must always get fresh version after deploys
+    if (filePath.endsWith("index.html")) {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+  },
+}));
 
 // ─── Auto-Meet: periodic matcher ───────────────────────────────────────────
 
